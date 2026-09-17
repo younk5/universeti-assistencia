@@ -5,6 +5,7 @@ import { agoraISO } from '../utils.js';
 import { invalido, naoEncontrado, ErroApp } from '../erros.js';
 import { salvarImagem, lerImagem, removerImagem } from '../storage.js';
 import { registrarEvento } from './ordens.js';
+import { registrarExclusao } from './auditoria.js';
 
 export const TIPOS_FOTO = ['entrada', 'saida', 'retirada', 'assinatura'];
 
@@ -83,8 +84,17 @@ export async function buscarFoto(fotoId) {
 }
 
 /** Exclusão definitiva de uma foto/anexo (administrativa). */
-export async function excluirFoto(fotoId) {
+export async function excluirFoto(fotoId, usuario = null) {
   const foto = await buscarFoto(fotoId);
+  const os = await consultarUm('SELECT numero_os FROM ordens_servico WHERE id = ?', foto.os_id);
+
+  await registrarExclusao({
+    tipo: 'foto',
+    referencia: os?.numero_os ?? `OS ${foto.os_id}`,
+    detalhes: `Anexo de ${foto.tipo}${foto.legenda ? `: ${foto.legenda}` : ''}`,
+    usuario,
+  });
+
   await suspenderProtecaoAuditoria();
   try {
     await executar('DELETE FROM fotos_os WHERE id = ?', fotoId);

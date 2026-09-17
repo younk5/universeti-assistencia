@@ -356,7 +356,7 @@ export function registrar(rota) {
     if (ctx.usuario.papel !== 'admin' && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
       throw semPermissao('Esta foto pertence a outra loja.');
     }
-    await excluirFoto(Number(ctx.params.id));
+    await excluirFoto(Number(ctx.params.id), ctx.usuario);
     return { mensagem: 'Foto removida definitivamente.' };
   });
 

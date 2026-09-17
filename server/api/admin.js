@@ -11,6 +11,8 @@ import {
 import { exigirTexto, exigirLogin, exigirTelefone, exigirEnum } from '../utils.js';
 import { exigirAutenticacao, exigirPermissao } from '../auth.js';
 import { semPermissao, invalido } from '../erros.js';
+import { listarExclusoes, registrarExclusao } from '../services/auditoria.js';
+import { exportarBanco, importarBanco } from '../services/backup.js';
 
 const PAPEIS = ['atendente', 'tecnico', 'admin'];
 
@@ -77,7 +79,7 @@ export function registrar(rota) {
 
   rota.delete('/api/lojas/:id', async (ctx) => {
     exigirAdmin(ctx.usuario);
-    const loja = await excluirLoja(Number(ctx.params.id));
+    const loja = await excluirLoja(Number(ctx.params.id), ctx.usuario);
     return { mensagem: `Loja "${loja.nome}" excluída definitivamente.` };
   });
 
@@ -136,7 +138,30 @@ export function registrar(rota) {
     exigirAdmin(ctx.usuario);
     const id = Number(ctx.params.id);
     if (id === ctx.usuario.id) throw invalido('Você não pode excluir a sua própria conta.');
-    const usuario = await excluirUsuario(id);
+    const usuario = await excluirUsuario(id, ctx.usuario);
     return { mensagem: `Usuário "${usuario.nome}" excluído definitivamente.` };
+  });
+
+  /* -------------------------- Auditoria e backup -------------------------- */
+  rota.get('/api/admin/exclusoes', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    return { exclusoes: await listarExclusoes({ limite: ctx.query.limite }) };
+  });
+
+  rota.get('/api/admin/backup', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    return { backup: await exportarBanco() };
+  });
+
+  rota.post('/api/admin/backup', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    const resumo = await importarBanco(ctx.corpo?.backup ?? ctx.corpo);
+    await registrarExclusao({
+      tipo: 'backup',
+      referencia: 'Restauração de backup',
+      detalhes: `Lojas ${resumo.lojas ?? 0} · Usuários ${resumo.usuarios ?? 0} · OS ${resumo.ordens_servico ?? 0}`,
+      usuario: ctx.usuario,
+    });
+    return { resumo, mensagem: 'Backup restaurado. Todas as sessões foram encerradas.' };
   });
 }

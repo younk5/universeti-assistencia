@@ -104,6 +104,21 @@ CREATE TABLE IF NOT EXISTS sessoes (
 
 CREATE INDEX IF NOT EXISTS idx_sessoes_usuario ON sessoes(usuario_id);
 
+-- Registro de exclusões administrativas: não guarda o conteúdo apagado, apenas
+-- quem apagou o quê e quando. Sem chave estrangeira para sobreviver à remoção
+-- do próprio usuário ou da loja.
+CREATE TABLE IF NOT EXISTS exclusoes_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo         TEXT    NOT NULL,
+  referencia   TEXT,
+  detalhes     TEXT,
+  usuario_id   INTEGER,
+  usuario_nome TEXT,
+  criado_em    TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_exclusoes_criado ON exclusoes_log(criado_em DESC);
+
 -- ============================================================================
 -- Trilha de auditoria imutável
 -- Eventos e fotos são o registro legal do que aconteceu com o aparelho.

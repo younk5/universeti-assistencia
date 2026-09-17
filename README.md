@@ -155,6 +155,13 @@ volta para trás.
   assinatura e eventos — é irreversível e restrita ao administrador. A proteção
   dos registros de auditoria é suspensa apenas nessa operação e religada em
   seguida.
+- **Registro de exclusões**: cada exclusão administrativa (OS, anexo, loja,
+  usuário) grava quem apagou, o quê e quando em `exclusoes_log` — visível em
+  Gestão → Auditoria. Não guarda o conteúdo apagado, apenas a rastreabilidade.
+- **Backup do banco em JSON**: exportar e restaurar todas as tabelas pela tela de
+  Gestão (restrito ao administrador). A restauração substitui os dados e encerra
+  as sessões; os arquivos das fotos ficam no armazenamento e não entram no
+  arquivo.
 
 ---
 
@@ -231,6 +238,7 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
   defeito, estado, status, valor, técnico, marcos de tempo
 - **fotos_os** — os_id, tipo (entrada/saída/retirada/assinatura), arquivo, autor
 - **eventos_os** — trilha de auditoria (tipo, status anterior/novo, autor, data)
+- **exclusoes_log** — registro das exclusões administrativas (tipo, referência, autor, data)
 - **sessoes** — tokens de sessão com expiração
 
 ---

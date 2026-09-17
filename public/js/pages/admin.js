@@ -12,7 +12,7 @@ import {
   toastErro,
   ocupado,
 } from '../ui.js';
-import { numero, data, iniciais, iniciaisPapel, telefone as formatarTelefone } from '../format.js';
+import { numero, data, dataHora, iniciais, iniciaisPapel, telefone as formatarTelefone } from '../format.js';
 
 const ABAS = [
   { id: 'lojas', rotulo: 'Lojas', icone: 'loja' },
@@ -30,7 +30,7 @@ export async function paginaAdmin(container) {
   }
 
   let abaAtiva = 'lojas';
-  const estado = { lojas: [], usuarios: [], carregando: true, erro: null };
+  const estado = { lojas: [], usuarios: [], exclusoes: [], carregando: true, erro: null };
 
   const areaAbas = h('div.abas', { role: 'tablist' });
   const areaConteudo = h('div', {}, esqueletoLista(2));
@@ -62,9 +62,14 @@ export async function paginaAdmin(container) {
     estado.erro = null;
     desenhar();
     try {
-      const [lojas, usuarios] = await Promise.all([api.get('/api/lojas'), api.get('/api/usuarios')]);
+      const [lojas, usuarios, exclusoes] = await Promise.all([
+        api.get('/api/lojas'),
+        api.get('/api/usuarios'),
+        api.get('/api/admin/exclusoes', { limite: 100 }),
+      ]);
       estado.lojas = lojas.lojas ?? [];
       estado.usuarios = usuarios.usuarios ?? [];
+      estado.exclusoes = exclusoes.exclusoes ?? [];
       await store.carregarMeta();
     } catch (erro) {
       estado.erro = erro.message;
@@ -580,41 +585,191 @@ export async function paginaAdmin(container) {
 
   /* ------------------------------ Auditoria ------------------------------ */
 
+  const ROTULOS_EXCLUSAO = { os: 'Ordem de serviço', foto: 'Anexo', loja: 'Loja', usuario: 'Usuário', backup: 'Backup' };
+
+  async function exportarBackup(botao) {
+    ocupado(botao, true, 'Gerando…');
+    try {
+      const { backup } = await api.get('/api/admin/backup');
+      const conteudo = JSON.stringify(backup, null, 2);
+      const url = URL.createObjectURL(new Blob([conteudo], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `backup-assistencia-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      toastSucesso('Backup gerado.', { titulo: 'Download iniciado' });
+    } catch (erro) {
+      toastErro(erro.message, { titulo: 'Não foi possível gerar o backup' });
+    } finally {
+      ocupado(botao, false);
+    }
+  }
+
+  async function restaurarBackup(arquivo, input) {
+    if (input) input.value = '';
+    if (!arquivo) return;
+
+    let backup;
+    try {
+      backup = JSON.parse(await arquivo.text());
+    } catch {
+      toastErro('O arquivo selecionado não é um JSON válido.', { titulo: 'Backup inválido' });
+      return;
+    }
+
+    const confirmado = await confirmar({
+      titulo: 'Restaurar backup',
+      mensagem:
+        'Isto substitui TODOS os dados atuais (lojas, usuários, OS, histórico e registros de exclusão) pelo conteúdo do arquivo e encerra todas as sessões. Não é possível desfazer.',
+      textoConfirmar: 'Substituir tudo',
+      perigoso: true,
+    });
+    if (!confirmado) return;
+
+    try {
+      const resposta = await api.post('/api/admin/backup', { backup });
+      toastSucesso(resposta.mensagem ?? 'Backup restaurado.', { titulo: 'Restaurado' });
+      window.location.hash = '/login';
+      window.location.reload();
+    } catch (erro) {
+      toastErro(erro.message, { titulo: 'Não foi possível restaurar' });
+    }
+  }
+
   function renderAuditoria() {
+    const entradaArquivo = h('input', {
+      type: 'file',
+      accept: '.json,application/json',
+      hidden: true,
+      onchange: (evento) => restaurarBackup(evento.target.files?.[0], evento.target),
+    });
+
+    const listaExclusoes = estado.exclusoes.length
+      ? h(
+          'div.tabela-wrapper',
+          {},
+          h(
+            'table.tabela',
+            {},
+            h(
+              'thead',
+              {},
+              h(
+                'tr',
+                {},
+                h('th', {}, 'Quando'),
+                h('th', {}, 'Tipo'),
+                h('th', {}, 'Referência'),
+                h('th', {}, 'Detalhes'),
+                h('th', {}, 'Autor'),
+              ),
+            ),
+            h(
+              'tbody',
+              {},
+              ...estado.exclusoes.map((item) =>
+                h(
+                  'tr',
+                  {},
+                  h('td.texto-mini.texto-fraco', {}, dataHora(item.criado_em)),
+                  h('td', {}, ROTULOS_EXCLUSAO[item.tipo] ?? item.tipo),
+                  h('td.texto-mono.texto-pequeno', {}, item.referencia ?? '—'),
+                  h('td.texto-mini', {}, item.detalhes ?? '—'),
+                  h('td.texto-pequeno', {}, item.usuario_nome ?? '—'),
+                ),
+              ),
+            ),
+          ),
+        )
+      : estadoVazio({
+          icone: 'escudo',
+          titulo: 'Nenhuma exclusão registrada',
+          texto: 'Quando uma OS, um anexo, uma loja ou um usuário for excluído, o registro aparece aqui.',
+        });
+
     return h(
-      'div.card',
+      'div.pilha--grande.pilha',
       {},
-      h('div.card__cabecalho', {}, h('h3', {}, 'Como funciona a auditoria')),
       h(
-        'div.card__corpo.pilha',
+        'div.card',
+        {},
+        h('div.card__cabecalho', {}, h('h3', {}, 'Como funciona a auditoria')),
+        h(
+          'div.card__corpo.pilha',
+          {},
+          h(
+            'p',
+            {},
+            'Toda mudança relevante é gravada na tabela de eventos com data/hora, autor e status anterior/novo. Esses registros são imutáveis no próprio banco de dados: o sistema bloqueia UPDATE e DELETE na trilha de auditoria, inclusive para administradores.',
+          ),
+          h(
+            'ul.pilha--pequena.pilha',
+            { style: { paddingLeft: '20px', margin: 0, color: 'var(--cor-texto-suave)' } },
+            h('li', {}, 'Entrada do aparelho, assumir, pausar por peça, concluir e retirar.'),
+            h('li', {}, 'Todas as anotações técnicas e de atendimento.'),
+            h('li', {}, 'Cada foto anexada, com autor e horário.'),
+            h('li', {}, 'Campos imutáveis na OS: loja de entrada, número, nome do cliente e data de criação.'),
+          ),
+          h(
+            'div.faixa-aviso',
+            {},
+            icone('escudo', { tamanho: 18 }),
+            h('span', {}, 'Para consultar a trilha de uma OS específica, abra a ordem e veja a seção "Histórico auditável".'),
+          ),
+          h(
+            'div',
+            { style: { marginTop: '4px' } },
+            h('a.btn.btn--secundario', { href: '#/ordens' }, icone('lista', { tamanho: 16 }), 'Abrir lista de OS'),
+          ),
+        ),
+      ),
+      h(
+        'div.card',
         {},
         h(
-          'p',
+          'div.card__cabecalho',
           {},
-          'Toda mudança relevante é gravada na tabela de eventos com data/hora, autor e status anterior/novo. Esses registros são imutáveis no próprio banco de dados: o sistema bloqueia UPDATE e DELETE na trilha de auditoria, inclusive para administradores.',
+          h('h3', {}, 'Exclusões registradas'),
+          h('span.texto-mini.texto-suave', {}, `${estado.exclusoes.length} registro(s)`),
         ),
+        h('div.card__corpo', {}, listaExclusoes),
+      ),
+      h(
+        'div.card',
+        {},
+        h('div.card__cabecalho', {}, h('h3', {}, 'Backup dos dados')),
         h(
-          'ul.pilha--pequena.pilha',
-          { style: { paddingLeft: '20px', margin: 0, color: 'var(--cor-texto-suave)' } },
-          h('li', {}, 'Entrada do aparelho, assumir, pausar por peça, concluir e retirar.'),
-          h('li', {}, 'Todas as anotações técnicas e de atendimento.'),
-          h('li', {}, 'Cada foto anexada, com autor e horário.'),
-          h('li', {}, 'Campos imutáveis na OS: loja de entrada, número, nome do cliente e data de criação.'),
-        ),
-        h(
-          'div.faixa-aviso',
+          'div.card__corpo.pilha',
           {},
-          icone('escudo', { tamanho: 18 }),
-          h('span', {}, 'Para consultar a trilha de uma OS específica, abra a ordem e veja a seção "Histórico auditável".'),
-        ),
-        h(
-          'div',
-          { style: { marginTop: '4px' } },
           h(
-            'a.btn.btn--secundario',
-            { href: '#/ordens' },
-            icone('lista', { tamanho: 16 }),
-            'Abrir lista de OS',
+            'p.texto-pequeno.texto-suave',
+            {},
+            'Baixe um arquivo .json com todas as tabelas (lojas, usuários, ordens, histórico e registros de fotos). O arquivo contém os logins do sistema — guarde-o em local seguro.',
+          ),
+          h(
+            'div.grupo-botoes',
+            {},
+            h(
+              'button.btn.btn--secundario',
+              { type: 'button', onclick: (evento) => exportarBackup(evento.currentTarget) },
+              icone('download', { tamanho: 16 }),
+              'Exportar backup (.json)',
+            ),
+            h(
+              'button.btn.btn--secundario',
+              { type: 'button', onclick: () => entradaArquivo.click() },
+              icone('recarregar', { tamanho: 16 }),
+              'Restaurar backup',
+            ),
+            entradaArquivo,
+          ),
+          h(
+            'p.texto-mini.texto-fraco',
+            {},
+            'Restaurar substitui os dados atuais e encerra todas as sessões. Os arquivos das fotos não entram no backup — apenas os registros que apontam para elas.',
           ),
         ),
       ),

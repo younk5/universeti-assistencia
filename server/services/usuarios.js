@@ -1,4 +1,5 @@
 import { consultar, consultarUm, executar, semChavesEstrangeiras } from '../db.js';
+import { registrarExclusao } from './auditoria.js';
 import { agoraISO } from '../utils.js';
 import { gerarHashSenha, validarForcaSenha } from '../auth.js';
 import { conflito, naoEncontrado, invalido } from '../erros.js';
@@ -127,22 +128,29 @@ export async function alterarSenha(id, novaSenha) {
  * o autor exibido como removido. Mantém-se apenas a proteção contra apagar o
  * último administrador (evita perder o acesso ao sistema).
  */
-export async function excluirUsuario(id) {
-  const usuario = await consultarUm('SELECT * FROM usuarios WHERE id = ?', id);
-  if (!usuario) throw naoEncontrado('Usuário não encontrado.');
+export async function excluirUsuario(id, usuario = null) {
+  const alvo = await consultarUm('SELECT * FROM usuarios WHERE id = ?', id);
+  if (!alvo) throw naoEncontrado('Usuário não encontrado.');
 
-  if (usuario.papel === 'admin') {
+  if (alvo.papel === 'admin') {
     const admins = await consultarUm(`SELECT COUNT(*) AS total FROM usuarios WHERE papel = 'admin'`);
     if (Number(admins.total) <= 1) {
       throw invalido('Não é possível excluir o último administrador do sistema. Crie outro admin antes.');
     }
   }
 
+  await registrarExclusao({
+    tipo: 'usuario',
+    referencia: alvo.nome,
+    detalhes: `${alvo.email} · ${alvo.papel}`,
+    usuario,
+  });
+
   await semChavesEstrangeiras(async () => {
     await executar('DELETE FROM sessoes WHERE usuario_id = ?', id);
     await executar('DELETE FROM usuarios WHERE id = ?', id);
   });
-  return usuario;
+  return alvo;
 }
 
 export async function listarTecnicos(lojaId = null) {

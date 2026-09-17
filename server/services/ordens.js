@@ -1,6 +1,7 @@
 import { consultar, consultarUm, executar, transacao, suspenderProtecaoAuditoria, restaurarProtecaoAuditoria } from '../db.js';
 import { agoraISO } from '../utils.js';
 import { removerImagem } from '../storage.js';
+import { registrarExclusao } from './auditoria.js';
 import { ErroApp, naoEncontrado, invalido, conflito } from '../erros.js';
 
 export const STATUS = Object.freeze({
@@ -153,6 +154,13 @@ export async function buscarOSPorNumero(numeroOS, usuario) {
 export async function excluirOS(osId, usuario) {
   const os = await buscarOS(osId, usuario);
   const fotos = await consultar('SELECT arquivo FROM fotos_os WHERE os_id = ?', osId);
+
+  await registrarExclusao({
+    tipo: 'os',
+    referencia: os.numero_os,
+    detalhes: `Cliente ${os.cliente_nome} · ${os.marca} ${os.modelo}`,
+    usuario,
+  });
 
   await suspenderProtecaoAuditoria();
   try {

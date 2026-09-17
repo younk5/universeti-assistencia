@@ -450,6 +450,30 @@ try {
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'Teste@123', novaSenha: 'Nova@123' });
   ok(r.status === 200, 'troca de senha funciona');
 
+  titulo('Auditoria de exclusões e backup');
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
+
+  r = await api('GET', '/api/admin/exclusoes');
+  ok(r.status === 200, 'registro de exclusões responde');
+  ok(r.dados.exclusoes.some((e) => e.tipo === 'os'), 'exclusão de OS fica registrada');
+  ok(r.dados.exclusoes.some((e) => e.tipo === 'foto'), 'exclusão de anexo fica registrada');
+  ok(r.dados.exclusoes.some((e) => e.tipo === 'usuario'), 'exclusão de usuário fica registrada');
+  ok(r.dados.exclusoes.some((e) => e.tipo === 'loja'), 'exclusão de loja fica registrada');
+  ok(r.dados.exclusoes.every((e) => e.usuario_nome), 'o registro aponta quem excluiu');
+
+  r = await api('GET', '/api/admin/backup');
+  const backup = r.dados.backup;
+  ok(r.status === 200 && Array.isArray(backup?.tabelas?.ordens_servico), 'backup exporta as tabelas do banco');
+  const totalOrdensBackup = backup.tabelas.ordens_servico.length;
+  ok(totalOrdensBackup > 0, `backup traz ${totalOrdensBackup} OS`);
+
+  r = await api('POST', '/api/admin/backup', { backup });
+  ok(r.status === 200, 'backup pode ser restaurado', `status=${r.status}`);
+
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
+  r = await api('GET', '/api/ordens');
+  ok(r.dados.total === totalOrdensBackup, 'dados permanecem íntegros após restaurar', `${r.dados.total} vs ${totalOrdensBackup}`);
+
   titulo('Logout');
   r = await api('POST', '/api/auth/logout');
   ok(r.status === 200, 'logout responde 200');

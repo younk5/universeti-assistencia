@@ -1,4 +1,5 @@
 import { consultar, consultarUm, executar, semChavesEstrangeiras } from '../db.js';
+import { registrarExclusao } from './auditoria.js';
 import { agoraISO, slugCodigo } from '../utils.js';
 import { conflito, naoEncontrado, invalido } from '../erros.js';
 
@@ -76,8 +77,14 @@ export async function desativarLoja(id) {
  * também podem ser removidas (os vínculos ficam órfãos, preservando o
  * histórico). O caminho de desativar continua existindo para quem preferir.
  */
-export async function excluirLoja(id) {
+export async function excluirLoja(id, usuario = null) {
   const loja = await buscarLoja(id);
+  await registrarExclusao({
+    tipo: 'loja',
+    referencia: `${loja.codigo} · ${loja.nome}`,
+    detalhes: loja.endereco ?? null,
+    usuario,
+  });
   await semChavesEstrangeiras(async () => {
     await executar('DELETE FROM lojas WHERE id = ?', id);
   });
