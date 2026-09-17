@@ -1,0 +1,29 @@
+{
+  "name": "tecnoflow-os",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Sistema de Ordens de Serviço multi-loja para rede de assistência técnica. Roda com node:sqlite local ou Turso (libSQL) na Vercel.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --no-warnings server/index.js",
+    "dev": "node --no-warnings --watch server/index.js",
+    "seed": "node --no-warnings server/seed.js",
+    "reset": "node --no-warnings server/seed.js --reset",
+    "seed:remote": "node --no-warnings --env-file=.env.local server/seed.js",
+    "reset:remote": "node --no-warnings --env-file=.env.local server/seed.js --reset",
+    "limpar:remote": "node --no-warnings --env-file=.env.local server/seed.js --limpar",
+    "check": "node --no-warnings server/test/validar-frontend.js",
+    "test:pdf": "node --no-warnings server/test/pdf.js",
+    "test:api": "node --no-warnings server/test/smoke.js",
+    "test:ui": "node --no-warnings server/test/navegador.js",
+    "test:turso": "node --no-warnings server/test/turso.js",
+    "test": "node --no-warnings server/test/todos.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@vercel/blob": "^2.8.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "UniverseTI Assistência · Ordens de Serviço",
+  "short_name": "UniverseTI Assistência",
+  "description": "Controle de ordens de serviço da UniverseTI Assistência.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f7fb",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
