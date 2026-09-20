@@ -140,7 +140,6 @@ usuário logado — só a tela de login redireciona quem já está autenticado.
 - Dados preservados no deploy (lojas, usuários, OS, fotos e histórico conferidos).
 
 ### Pendente: deploy automático via GitHub
-
 O repositório online (`younk5/universeti-assistencia`) ainda **não tem** estas
 mudanças — o commit já existe na pasta local. Para ativar o deploy automático:
 
@@ -181,4 +180,19 @@ curl -s https://universeti-teste.vercel.app/api/health
 
 > No reset remoto, os triggers de imutabilidade são suspensos e religados em
 > volta da limpeza (`server/seed.js`) — sem isso o Turso recusa o `DELETE`.
+
+## Atualização: checklist ampliado e senha do aparelho
+
+- **Checklist com 19 itens** (tela trincada/manchada, traseira, câmera, conector
+  de carga, botões, alto-falante, bateria inchada, oxidação, queda, molhou,
+  esquenta, riscos, conta Google/iCloud ativa, película etc.).
+- **Senha do aparelho** registrada na entrada, com tipo:
+  - **Numérica (PIN)** ou **com letras** → campo de texto;
+  - **Desenho (padrão)** → área 3x3 para desenhar, e o sistema guarda a
+    **ordem dos pontos** (ex.: `1 → 2 → 5 → 8`), exibida no detalhe da OS.
+  - Validação no servidor (`checklist.senha = { tipo, valor }`).
+- **Atendente não altera a própria senha** — a troca é feita pelo administrador
+  em **Gestão → Usuários → Redefinir senha** (com botão de gerar senha forte e
+  copiar). O servidor recusa a troca pelo próprio atendente (403).
+
 
