@@ -5,6 +5,7 @@ import { api } from '../api.js';
 import { cartaoFoto } from '../components/cartao-os.js';
 import { modalFinalizarOS, modalRetirarOS, modalComentar, modalAnexarFoto, modalOrcamento, modalDecisaoOrcamento, copiarLink } from '../components/modais-os.js';
 import { qrImagem } from '../qr.js';
+import { previewPadrao } from '../padrao.js';
 import {
   esqueletoLista,
   faixaErro,
@@ -644,7 +645,14 @@ function cartaoChecklist(os) {
             'div',
             {},
             h('div.rotulo-flutuante', {}, 'Senha do aparelho'),
-            h('p.senha-visivel', {}, descreverSenha(itens.senha)),
+            itens.senha.tipo === 'padrao'
+              ? h(
+                  'div.pilha--pequena.pilha',
+                  {},
+                  previewPadrao(itens.senha.valor, { tamanho: 120 }),
+                  h('p.senha-visivel', {}, `Ordem: ${String(itens.senha.valor).split('-').join(' → ')}`),
+                )
+              : h('p.senha-visivel', {}, descreverSenha(itens.senha)),
           )
         : null,
       itens.itensDeixados ? h('div', {}, h('div.rotulo-flutuante', {}, 'Itens deixados'), h('p', {}, itens.itensDeixados)) : null,

@@ -2340,6 +2340,14 @@ img { max-width: 100%; display: block; }
 }
 .padrao__legenda { font-size: 0.78rem; color: var(--cor-texto-suave); text-align: center; }
 .padrao__sequencia { font-family: var(--fonte-mono); font-size: 0.85rem; font-weight: 600; }
+.padrao__sequencia--curta { color: var(--cor-aviso); }
+.padrao__acoes { display: flex; gap: var(--esp-2); }
+.padrao__acoes .btn:disabled { opacity: 0.5; }
+.padrao-preview {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-sm);
+}
 .senha-visivel { font-family: var(--fonte-mono); font-weight: 600; }
 
 /* ------------------------------- Financeiro ----------------------------- */

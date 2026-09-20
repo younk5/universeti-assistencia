@@ -331,7 +331,10 @@ export function paginaNovaOS(container) {
     if (defeito.length < 3) faltando.push('defeito relatado');
     if (!capturaEntrada.temFoto()) faltando.push('foto de entrada');
     if (assinaturaEntrada.estaVazio()) faltando.push('assinatura do cliente no termo');
-    if (checklist.senhaInformada.checked && !valorSenha()) faltando.push('a senha do aparelho (marcou que o cliente informou)');
+    if (checklist.senhaInformada.checked) {
+      if (!valorSenha()) faltando.push('a senha do aparelho (marcou que o cliente informou)');
+      else if (tipoSenha.value === 'padrao' && padrao.pontos() < 4) faltando.push('o desenho do padrão (mínimo 4 pontos)');
+    }
 
     if (faltando.length) {
       mostrarErro(`Confira antes de salvar: informe ${faltando.join(', ')}.`);
