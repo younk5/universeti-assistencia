@@ -7,13 +7,11 @@ import { agoraISO } from '../utils.js';
  */
 
 export const CHAVES = Object.freeze({
-  COMISSAO_PERCENTUAL: 'comissao_percentual',
   GARANTIA_DIAS: 'garantia_dias_padrao',
   PRAZO_DIAS: 'prazo_dias_padrao',
 });
 
 const PADROES = {
-  [CHAVES.COMISSAO_PERCENTUAL]: '30',
   [CHAVES.GARANTIA_DIAS]: '90',
   [CHAVES.PRAZO_DIAS]: '5',
 };

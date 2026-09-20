@@ -34,13 +34,12 @@ quando estiver satisfeito, é só levar os arquivos para o repositório oficial.
 - Aparece no detalhe da OS (com marcado/riscado) e no histórico.
 - Salvo como JSON na OS e validado no servidor (apenas chaves conhecidas).
 
-### 4. Financeiro, comissão e garantia
-- **Painel financeiro**: faturamento, ticket médio, recebido, a receber e
-  **comissão estimada** (percentual configurável no Admin → Regras).
+### 4. Financeiro e garantia
+- **Painel financeiro**: faturamento, ticket médio, recebido e a receber.
 - **Formas de pagamento** no momento da retirada.
 - **Garantia**: dias definidos na conclusão e data-limite calculada na retirada,
   exibida no detalhe, no comprovante e no rastreio.
-- Comissão e faturamento por técnico no ranking de produtividade.
+- **Faturamento por técnico** no ranking de produtividade (sem comissão).
 - CSV ganhou colunas de orçamento, forma de pagamento e garantia.
 
 ### 5. QR Code e visual
@@ -119,9 +118,9 @@ usuário logado — só a tela de login redireciona quem já está autenticado.
 - **Modo escuro** segue o tema do sistema (via `boot.js`).
 
 ### Gestão
-- Painel com **financeiro** (faturamento, ticket, comissão, formas de pagamento),
+- Painel com **financeiro** (faturamento, ticket, formas de pagamento),
   **comparativo vs. período anterior** e **relatório em PDF**.
-- Gestão → **Regras**: comissão, garantia padrão e **prazo de retirada**.
+- Gestão → **Regras**: garantia padrão e **prazo de retirada**.
 
 ### Infra
 - **Backup automático diário**: Vercel Cron `GET /api/cron/backup` (protegido por

@@ -1,6 +1,5 @@
 import { consultar, consultarUm } from '../db.js';
 import { STATUS_VALIDOS } from './ordens.js';
-import { lerNumeroConfig, CHAVES } from './configuracoes.js';
 import { escopoRede } from '../auth.js';
 
 const CORES_STATUS = ['aguardando', 'em_manutencao', 'aguardando_peca', 'pronto', 'retirado', 'cancelado'];
@@ -111,7 +110,6 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
   );
 
   /* ------------------------------ Financeiro ------------------------------ */
-  const comissaoPct = await lerNumeroConfig(CHAVES.COMISSAO_PERCENTUAL, 30);
 
   const caixa = await consultarUm(
     `SELECT COUNT(*) AS entregas,
@@ -192,18 +190,15 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
         concluidas: Number(t.concluidas ?? 0),
         concluidas_com_data: Number(t.concluidas_com_data ?? 0),
         faturamento: faturamentoTecnico,
-        comissao: Number(((faturamentoTecnico * comissaoPct) / 100).toFixed(2)),
         horas_medias: t.horas_medias == null ? null : Number(t.horas_medias),
       };
     }),
     financeiro: {
-      comissaoPercentual: comissaoPct,
       entregas,
       faturamento,
       recebido: Number(caixa?.recebido ?? 0),
       aReceber: Number(caixa?.a_receber ?? 0),
       ticketMedio: entregas > 0 ? Number((faturamento / entregas).toFixed(2)) : 0,
-      comissaoTotal: Number(((faturamento * comissaoPct) / 100).toFixed(2)),
       porFormaPagamento: porPagamento.map((p) => ({
         forma: p.forma,
         total: Number(p.total ?? 0),

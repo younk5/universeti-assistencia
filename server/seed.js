@@ -225,13 +225,12 @@ async function semear() {
       const [, marca, modelo, cor, defeito] = sortear(APARELHOS, indice);
 
       const criado = diasAtras(cenario.dias, 9 + (indice % 8), (indice * 7) % 60);
-      const ano = criado.getFullYear();
-      const prefixo = `${lojaCodigo}-${ano}-`;
+      const prefixo = `${lojaCodigo}-`;
       const ultimo = await conexao.get(
-        'SELECT numero_os FROM ordens_servico WHERE numero_os LIKE ? ORDER BY numero_os DESC LIMIT 1',
+        `SELECT MAX(CAST(substr(numero_os, -4) AS INTEGER)) AS maior FROM ordens_servico WHERE numero_os LIKE ?`,
         [`${prefixo}%`],
       );
-      const sequencia = ultimo ? Number(String(ultimo.numero_os).slice(prefixo.length)) + 1 : 1;
+      const sequencia = Number(ultimo?.maior ?? 0) + 1;
       const numeroOS = `${prefixo}${String(sequencia).padStart(4, '0')}`;
 
       const iniciado = ['aguardando', 'cancelado'].includes(cenario.status)

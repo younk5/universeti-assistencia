@@ -673,13 +673,6 @@ export async function paginaAdmin(container) {
   }
 
   function renderConfig() {
-    const comissao = h('input.entrada', {
-      type: 'number',
-      min: '0',
-      max: '100',
-      inputMode: 'decimal',
-      value: String(estado.config.comissao_percentual ?? '30'),
-    });
     const garantia = h('input.entrada', {
       type: 'number',
       min: '0',
@@ -700,7 +693,6 @@ export async function paginaAdmin(container) {
       ocupado(botao, true, 'Salvando…');
       try {
         const resposta = await api.patch('/api/admin/configuracoes', {
-          comissaoPercentual: Number(comissao.value),
           garantiaDiasPadrao: Number(garantia.value),
           prazoDiasPadrao: Number(prazo.value),
         });
@@ -731,13 +723,6 @@ export async function paginaAdmin(container) {
           h(
             'div.formulario__linha.formulario__linha--2',
             {},
-            h(
-              'div.campo',
-              {},
-              h('label.campo__rotulo', {}, 'Comissão dos técnicos (%)'),
-              comissao,
-              h('span.campo__dica', {}, 'Percentual aplicado sobre o faturamento de cada técnico no painel financeiro.'),
-            ),
             h(
               'div.campo',
               {},

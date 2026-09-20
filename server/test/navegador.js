@@ -525,7 +525,7 @@ try {
 
   const textoSucesso = await avaliar("document.querySelector('.modal')?.innerText ?? ''");
   ok(textoSucesso.includes('Entrada registrada'), 'modal de sucesso aparece após salvar', textoSucesso.slice(0, 140));
-  const numeroGerado = /[A-Z]{3}-\d{4}-\d{4}/.exec(textoSucesso)?.[0];
+  const numeroGerado = /[A-Z]{3}-\d{4}/.exec(textoSucesso)?.[0];
   ok(Boolean(numeroGerado), `número de OS gerado na tela: ${numeroGerado}`);
 
   const ordensDepois = await fetch(`${base}/api/ordens`, { headers: { Cookie: cookieSessao } })

@@ -93,7 +93,6 @@ export async function baixarRelatorioPainel(dados, { escopo = 'Rede inteira' } =
     linha('Recebido', moeda(fin.recebido ?? 0));
     linha('A receber', moeda(fin.aReceber ?? 0));
     linha('Ticket médio', moeda(fin.ticketMedio ?? 0));
-    linha(`Comissão estimada (${fin.comissaoPercentual ?? 0}%)`, moeda(fin.comissaoTotal ?? 0));
     if (fin.porFormaPagamento?.length) {
       y += 2;
       for (const p of fin.porFormaPagamento) {

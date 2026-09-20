@@ -40,7 +40,7 @@ export function registrar(rota) {
     const numero = exigirTexto(ctx.params.numero, 'número da OS', { max: 40 }).toUpperCase();
     const digitos = normalizarDigitos(ctx.query.tel ?? '');
     if (digitos.length < 4) {
-      throw invalido('Informe os 4 últimos dígitos do telefone cadastrado.', { campo: 'tel' });
+      throw invalido('Informe os 4 últimos dígitos do WhatsApp cadastrado.', { campo: 'tel' });
     }
 
     const os = await consultarUm(
@@ -57,7 +57,7 @@ export function registrar(rota) {
     // telefone que não bate evita varredura de números de OS.
     const cadastrado = os ? normalizarDigitos(os.cliente_telefone) : '';
     if (!os || !cadastrado.endsWith(digitos)) {
-      throw invalido('Não encontramos uma OS com esse número e telefone.', { campo: 'tel' });
+      throw invalido('Não encontramos uma OS com esse número e WhatsApp.', { campo: 'tel' });
     }
 
     const eventos = await consultar(

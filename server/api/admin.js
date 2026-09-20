@@ -50,10 +50,8 @@ export function registrar(rota) {
 
   rota.patch('/api/admin/configuracoes', async (ctx) => {
     exigirAdmin(ctx.usuario);
-    const comissao = exigirNumero(ctx.corpo.comissaoPercentual, 'comissão (%)', { min: 0, max: 100 });
     const garantia = exigirNumero(ctx.corpo.garantiaDiasPadrao, 'garantia padrão (dias)', { min: 0, max: 3650 });
     const prazo = exigirNumero(ctx.corpo.prazoDiasPadrao, 'prazo padrão (dias)', { min: 0, max: 365 });
-    if (comissao !== null) await definirConfig(CHAVES.COMISSAO_PERCENTUAL, comissao);
     if (garantia !== null) await definirConfig(CHAVES.GARANTIA_DIAS, garantia);
     if (prazo !== null) await definirConfig(CHAVES.PRAZO_DIAS, prazo);
     return { configuracoes: await listarConfiguracoes(), mensagem: 'Configurações salvas.' };

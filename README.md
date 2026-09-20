@@ -11,7 +11,7 @@ nativos. Não há etapa de build, nem `npm install`.
 
 > **Versão de teste** — esta cópia inclui melhorias que ainda não estão na versão
 > publicada: portal público do cliente (rastreio por QR e aprovação de
-> orçamento), checklist técnico na entrada, financeiro com comissão e garantia.
+> orçamento), checklist técnico na entrada, financeiro e garantia.
 > Veja [MELHORIAS.md](./MELHORIAS.md).
 
 ---

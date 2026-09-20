@@ -253,7 +253,6 @@ export async function paginaDashboard(container) {
             cartaoResumo('Faturamento', moeda(financeiro.faturamento ?? 0), `${numero(financeiro.entregas ?? 0)} OS entregues`, 'tendencia'),
             cartaoResumo('Ticket médio', moeda(financeiro.ticketMedio ?? 0), 'por OS entregue', 'caixa'),
             cartaoResumo('Recebido', moeda(financeiro.recebido ?? 0), 'pagamento confirmado', 'check'),
-            cartaoResumo('Comissão estimada', moeda(financeiro.comissaoTotal ?? 0), `${financeiro.comissaoPercentual ?? 0}% do faturamento`, 'garra'),
           ),
           financeiro.porFormaPagamento?.length
             ? h(
@@ -298,7 +297,7 @@ export async function paginaDashboard(container) {
           'div.texto-central.so-desktop',
           {},
           h('div.texto-forte', {}, moeda(tecnico.faturamento ?? 0)),
-          h('div.texto-mini.texto-fraco', {}, `comissão ${moeda(tecnico.comissao ?? 0)}`),
+          h('div.texto-mini.texto-fraco', {}, 'faturamento'),
         ),
         tecnico.horas_medias != null
           ? h('div.texto-central.so-desktop', {}, h('div.texto-forte', {}, duracao(tecnico.horas_medias)), h('div.texto-mini.texto-fraco', {}, 'média'))

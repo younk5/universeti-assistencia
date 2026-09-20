@@ -398,15 +398,14 @@ try {
   ok(typeof r.dados.periodoResumo?.total === 'number', 'dashboard resume o período');
   ok(typeof r.dados.financeiro?.faturamento === 'number', 'dashboard traz bloco financeiro');
   ok(r.dados.financeiro.faturamento >= 480.5, 'faturamento inclui a OS retirada', `faturamento=${r.dados.financeiro.faturamento}`);
-  ok(typeof r.dados.financeiro.comissaoTotal === 'number', 'comissão estimada calculada');
   ok(Array.isArray(r.dados.financeiro.porFormaPagamento), 'dashboard lista formas de pagamento');
-  ok(r.dados.produtividade.every((t) => 'comissao' in t), 'produtividade traz comissão por técnico');
+  ok(!('comissaoTotal' in r.dados.financeiro), 'financeiro não tem mais comissão');
 
   titulo('Configurações da rede');
-  r = await api('PATCH', '/api/admin/configuracoes', { comissaoPercentual: 25, garantiaDiasPadrao: 120 });
-  ok(r.status === 200 && r.dados.configuracoes?.comissao_percentual === '25', 'admin salva regras da rede', JSON.stringify(r.dados).slice(0, 160));
+  r = await api('PATCH', '/api/admin/configuracoes', { garantiaDiasPadrao: 120, prazoDiasPadrao: 7 });
+  ok(r.status === 200 && r.dados.configuracoes?.garantia_dias_padrao === '120', 'admin salva regras da rede', JSON.stringify(r.dados).slice(0, 160));
   r = await api('GET', '/api/admin/configuracoes');
-  ok(r.dados.configuracoes?.garantia_dias_padrao === '120', 'regra de garantia fica persistida');
+  ok(r.dados.configuracoes?.prazo_dias_padrao === '7', 'regra de prazo fica persistida');
 
   r = await api('GET', '/api/relatorios/ordens.csv');
   ok(r.status === 200 && String(r.dados).includes('numero_os'), 'exportação CSV gera conteúdo');

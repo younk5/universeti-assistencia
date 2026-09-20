@@ -46,7 +46,7 @@ export function montarRastreio(params = {}) {
   const campoNumero = h('input.entrada', {
     type: 'text',
     name: 'numero',
-    placeholder: 'Ex.: GUA-2026-0001',
+    placeholder: 'Ex.: GUA-0001',
     autocomplete: 'off',
     autocapitalize: 'characters',
     value: numeroInicial,
@@ -84,7 +84,7 @@ export function montarRastreio(params = {}) {
     h(
       'label.campo',
       {},
-      h('span.campo__rotulo', {}, '4 últimos dígitos do telefone'),
+      h('span.campo__rotulo', {}, '4 últimos dígitos do WhatsApp'),
       h('div.campo-com-icone', {}, h('span.campo-com-icone__icone', {}, icone('telefone', { tamanho: 17 })), campoTel),
     ),
     botao,

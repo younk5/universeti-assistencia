@@ -269,7 +269,7 @@ export function paginaOSDetalhe(container, params) {
           {},
           h('span.kv__chave', {}, 'Nome'),
           h('span.kv__valor', {}, os.cliente_nome),
-          h('span.kv__chave', {}, 'Telefone'),
+          h('span.kv__chave', {}, 'WhatsApp'),
           h('span.kv__valor', {}, formatarTelefone(os.cliente_telefone)),
           h('span.kv__chave', {}, 'Recebido por'),
           h('span.kv__valor', {}, os.recebido_por ?? os.cliente_nome),

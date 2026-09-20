@@ -52,17 +52,15 @@ const JOINS_OS = `
 export async function gerarNumeroOS(conexao, lojaId) {
   const loja = await conexao.get('SELECT codigo FROM lojas WHERE id = ?', [lojaId]);
   if (!loja) throw invalido('Loja inválida para gerar o número da OS.');
-  const ano = new Date().getFullYear();
-  const prefixo = `${loja.codigo}-${ano}-`;
+  // Número curto: CODIGO-0000 (ex.: GUA-0001). Sem o ano, fica mais fácil de
+  // ditar e pesquisar. A sequência continua a partir do maior número da loja.
+  const prefixo = `${loja.codigo}-`;
   const linha = await conexao.get(
-    'SELECT numero_os FROM ordens_servico WHERE numero_os LIKE ? ORDER BY numero_os DESC LIMIT 1',
+    `SELECT MAX(CAST(substr(numero_os, -4) AS INTEGER)) AS maior
+       FROM ordens_servico WHERE numero_os LIKE ?`,
     [`${prefixo}%`],
   );
-  let sequencia = 1;
-  if (linha) {
-    const parte = Number(String(linha.numero_os).slice(prefixo.length));
-    if (Number.isFinite(parte)) sequencia = parte + 1;
-  }
+  let sequencia = Number(linha?.maior ?? 0) + 1;
   let numero = `${prefixo}${String(sequencia).padStart(4, '0')}`;
   while (await conexao.get('SELECT 1 FROM ordens_servico WHERE numero_os = ?', [numero])) {
     sequencia += 1;

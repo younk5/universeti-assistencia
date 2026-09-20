@@ -127,9 +127,9 @@ export function paginaNovaOS(container) {
           h(
             'div.campo',
             {},
-            h('label.campo__rotulo', {}, 'Telefone / WhatsApp *'),
+            h('label.campo__rotulo', {}, 'WhatsApp do cliente *'),
             campos.clienteTelefone,
-            h('span.campo__dica', {}, 'Usamos este número para avisar quando o aparelho ficar pronto.'),
+            h('span.campo__dica', {}, 'Usamos este número somente para avisos por WhatsApp (não enviamos SMS nem ligamos).'),
           ),
         ),
       ),

@@ -65,7 +65,7 @@ function desenharEtiqueta(ordem) {
     500,
     2,
   );
-  campo('Contato:', telefone(ordem.cliente_telefone), 2.9, 500, 1);
+  campo('Contato (WhatsApp):', telefone(ordem.cliente_telefone), 2.9, 500, 1);
   if (ordem.acessorios) campo('Acessórios:', ordem.acessorios, 2.6, 500, 1);
   campo('Defeito:', String(ordem.defeito_relatado ?? ''), 2.6, 500, 3);
 
