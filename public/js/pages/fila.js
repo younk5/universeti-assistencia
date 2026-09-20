@@ -132,7 +132,7 @@ export async function paginaFila(container) {
           h(
             'div.pilha--pequena.pilha',
             { style: { alignContent: 'start' } },
-            cartaoOS(ordem, { mostrarLoja: store.ehAdmin }),
+            cartaoOS(ordem, { mostrarLoja: store.escopoRede }),
             acoesDaOS(ordem),
           ),
         ),

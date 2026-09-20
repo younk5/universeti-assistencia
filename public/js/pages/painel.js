@@ -3,19 +3,29 @@ import { icone } from '../icons.js';
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { cartaoOS, linhaCompactaOS } from '../components/cartao-os.js';
-import { esqueletoLista, faixaErro, estadoVazio, toastErro, toastSucesso } from '../ui.js';
+import { esqueletoLista, faixaErro, estadoVazio, toastErro, toastSucesso, ocupado } from '../ui.js';
 import { numero, moeda, duracao, mesAtual, rotuloPeriodo, iniciais } from '../format.js';
 import { ORDEM_STATUS, ROTULOS_STATUS, COR_STATUS } from '../constantes.js';
+import { baixarRelatorioPainel } from '../relatorio-painel.js';
+
+const ROTULOS_PAGAMENTO = {
+  pix: 'Pix',
+  dinheiro: 'Dinheiro',
+  credito: 'Cartão de crédito',
+  debito: 'Cartão de débito',
+  outro: 'Outro',
+  nao_informado: 'Não informado',
+};
 
 let filtros = { ...mesAtual(), lojaId: '' };
 
 export async function paginaDashboard(container) {
-  const ehAdmin = store.ehAdmin;
+  const escopoRede = store.escopoRede;
   const lojas = store.meta?.lojas ?? [];
 
   const campoDe = h('input.entrada', { type: 'date', value: filtros.de, 'aria-label': 'Data inicial' });
   const campoAte = h('input.entrada', { type: 'date', value: filtros.ate, 'aria-label': 'Data final' });
-  const campoLoja = ehAdmin && lojas.length
+  const campoLoja = escopoRede && lojas.length
     ? h(
         'select.selecao',
         { 'aria-label': 'Filtrar por loja' },
@@ -68,12 +78,35 @@ export async function paginaDashboard(container) {
       h(
         'div.pagina-cabecalho__titulo',
         {},
-        h('h1', {}, ehAdmin ? 'Painel da rede' : `Painel · ${store.usuario.lojaNome ?? ''}`),
+        h('h1', {}, escopoRede ? 'Painel da rede' : `Painel · ${store.usuario.lojaNome ?? ''}`),
         h('p.pagina-cabecalho__desc', {}, `Indicadores de ${rotuloPeriodo(filtros.de, filtros.ate).toLowerCase()}`),
       ),
       h(
         'div.pagina-cabecalho__acoes',
         {},
+        h(
+          'button.btn.btn--secundario',
+          {
+            type: 'button',
+            onclick: async (evento) => {
+              const botao = evento.currentTarget;
+              ocupado(botao, true, 'Gerando…');
+              try {
+                const dados = await api.get('/api/dashboard', { de: filtros.de, ate: filtros.ate, lojaId: filtros.lojaId });
+                const nomeLoja = (store.meta?.lojas ?? []).find((l) => String(l.id) === String(filtros.lojaId))?.nome;
+                const escopo = nomeLoja ?? (store.escopoRede ? 'Rede inteira' : store.usuario?.lojaNome ?? '');
+                await baixarRelatorioPainel(dados, { escopo });
+                toastSucesso('Relatório gerado.', { titulo: 'Download iniciado' });
+              } catch (erro) {
+                toastErro(erro.message, { titulo: 'Não foi possível gerar o relatório' });
+              } finally {
+                ocupado(botao, false);
+              }
+            },
+          },
+          icone('download', { tamanho: 16 }),
+          'Relatório PDF',
+        ),
         h(
           'button.btn.btn--secundario',
           {
@@ -167,19 +200,27 @@ export async function paginaDashboard(container) {
       ),
     );
 
+    const comp = dados.comparativo;
+    const variacaoTexto = (v) =>
+      v === null || v === undefined ? null : `${v > 0 ? '▲' : v < 0 ? '▼' : '•'} ${String(Math.abs(v)).replace('.', ',')}% vs. período anterior`;
     const resumoPeriodo = h(
       'div.grade',
       {},
-      cartaoResumo('Entradas no período', numero(resumo.total ?? 0), `${rotuloPeriodo(dados.periodo?.de, dados.periodo?.ate)}`, 'caixa'),
+      cartaoResumo(
+        'Entradas no período',
+        numero(resumo.total ?? 0),
+        variacaoTexto(comp?.variacaoEntradas) ?? rotuloPeriodo(dados.periodo?.de, dados.periodo?.ate),
+        'caixa',
+      ),
       cartaoResumo(
         'Valor em serviços',
         moeda(resumo.faturamento ?? 0),
-        'OS prontas ou retiradas no período',
+        variacaoTexto(comp?.variacaoFaturamento) ?? 'OS prontas ou retiradas no período',
         'tendencia',
       ),
     );
 
-    const porLoja = (dados.porLoja ?? []).filter((l) => l.total > 0 || ehAdmin);
+    const porLoja = (dados.porLoja ?? []).filter((l) => l.total > 0 || escopoRede);
     const painelLojas = porLoja.length
       ? h(
           'div.pilha',
@@ -200,6 +241,42 @@ export async function paginaDashboard(container) {
           texto: 'Ajuste o período ou cadastre uma loja em Gestão.',
         });
 
+    const financeiro = dados.financeiro;
+    const painelFinanceiro = financeiro
+      ? h(
+          'div',
+          {},
+          h('div.rotulo-flutuante', { style: { marginBottom: '10px' } }, 'Financeiro do período'),
+          h(
+            'div.financeiro',
+            {},
+            cartaoResumo('Faturamento', moeda(financeiro.faturamento ?? 0), `${numero(financeiro.entregas ?? 0)} OS entregues`, 'tendencia'),
+            cartaoResumo('Ticket médio', moeda(financeiro.ticketMedio ?? 0), 'por OS entregue', 'caixa'),
+            cartaoResumo('Recebido', moeda(financeiro.recebido ?? 0), 'pagamento confirmado', 'check'),
+            cartaoResumo('Comissão estimada', moeda(financeiro.comissaoTotal ?? 0), `${financeiro.comissaoPercentual ?? 0}% do faturamento`, 'garra'),
+          ),
+          financeiro.porFormaPagamento?.length
+            ? h(
+                'div.card',
+                { style: { marginTop: 'var(--esp-4)' } },
+                h('div.card__cabecalho', {}, h('h3', {}, 'Formas de pagamento'), h('span.texto-mini.texto-suave', {}, 'OS entregues no período')),
+                h(
+                  'div.card__corpo.financeiro__lista',
+                  {},
+                  ...financeiro.porFormaPagamento.map((p) =>
+                    h(
+                      'div.financeiro__linha',
+                      {},
+                      h('span', {}, ROTULOS_PAGAMENTO[p.forma] ?? p.forma),
+                      h('span', {}, `${numero(p.total)} · `, h('strong', {}, moeda(p.valor))),
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        )
+      : null;
+
     const produtividade = (dados.produtividade ?? []).map((tecnico) =>
       h(
         'div.lista-compacta__item',
@@ -216,6 +293,12 @@ export async function paginaDashboard(container) {
           {},
           h('div.texto-forte', {}, numero(tecnico.concluidas_com_data ?? 0)),
           h('div.texto-mini.texto-fraco', {}, 'concluídas'),
+        ),
+        h(
+          'div.texto-central.so-desktop',
+          {},
+          h('div.texto-forte', {}, moeda(tecnico.faturamento ?? 0)),
+          h('div.texto-mini.texto-fraco', {}, `comissão ${moeda(tecnico.comissao ?? 0)}`),
         ),
         tecnico.horas_medias != null
           ? h('div.texto-central.so-desktop', {}, h('div.texto-forte', {}, duracao(tecnico.horas_medias)), h('div.texto-mini.texto-fraco', {}, 'média'))
@@ -242,12 +325,13 @@ export async function paginaDashboard(container) {
         )
       : null;
 
-    const recentes = (dados.recentes ?? []).map((os) => cartaoOS(os, { mostrarLoja: ehAdmin }));
+    const recentes = (dados.recentes ?? []).map((os) => cartaoOS(os, { mostrarLoja: escopoRede }));
     const fila = (dados.fila ?? []).map((os) => linhaCompactaOS(os));
 
     const corpo = [
       indicadores,
       h('div', {}, h('div.rotulo-flutuante', { style: { marginBottom: '10px' } }, 'Resumo do período'), resumoPeriodo),
+      painelFinanceiro,
       h(
         'div.grade--lateral.grade',
         {},
@@ -381,6 +465,7 @@ function barraLoja(loja) {
       h('span', {}, `${loja.em_manutencao ?? 0} em bancada`),
       h('span', {}, `${loja.pronto ?? 0} prontos`),
       h('span', {}, `${loja.retirados_periodo ?? 0} retirados no período`),
+      loja.faturamento ? h('span', {}, `Faturamento ${moeda(loja.faturamento)}`) : null,
     ),
   );
 }

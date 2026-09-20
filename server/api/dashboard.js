@@ -1,13 +1,13 @@
 import { resumoDashboard } from '../services/dashboard.js';
 import { listarOS } from '../services/ordens.js';
-import { exigirAutenticacao, exigirPermissao } from '../auth.js';
+import { exigirAutenticacao, exigirPermissao, escopoRede } from '../auth.js';
 import { consultar } from '../db.js';
 
 export function registrar(rota) {
   /** Contadores leves para os badges de navegação (sem relatórios pesados). */
   rota.get('/api/resumo', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
-    const escopo = ctx.usuario.papel === 'admin' ? null : ctx.usuario.lojaId;
+    const escopo = escopoRede(ctx.usuario) ? null : ctx.usuario.lojaId;
     const chaves = ['aguardando', 'em_manutencao', 'aguardando_peca', 'pronto', 'retirado', 'cancelado'];
     const status = Object.fromEntries(chaves.map((c) => [c, 0]));
     const linhas = await consultar(

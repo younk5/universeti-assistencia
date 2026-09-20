@@ -1,5 +1,7 @@
 import { consultar, consultarUm } from '../db.js';
 import { STATUS_VALIDOS } from './ordens.js';
+import { lerNumeroConfig, CHAVES } from './configuracoes.js';
+import { escopoRede } from '../auth.js';
 
 const CORES_STATUS = ['aguardando', 'em_manutencao', 'aguardando_peca', 'pronto', 'retirado', 'cancelado'];
 
@@ -11,7 +13,7 @@ function periodoPadrao(de, ate) {
 }
 
 export async function resumoDashboard({ usuario, lojaId = null, de = null, ate = null }) {
-  const escopo = usuario.papel === 'admin' ? (lojaId ? Number(lojaId) : null) : Number(usuario.lojaId);
+  const escopo = escopoRede(usuario) ? (lojaId ? Number(lojaId) : null) : Number(usuario.lojaId);
   const baseWhere = [];
   const baseParams = [];
   if (escopo) {
@@ -45,6 +47,25 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
     ...paramsPeriodo,
   );
 
+  // Período anterior (mesma duração, imediatamente antes) para comparação.
+  const duracaoMs = new Date(janela.ate).getTime() - new Date(janela.de).getTime();
+  const anterior = await consultarUm(
+    `SELECT COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN o.status IN ('pronto','retirado') THEN o.valor ELSE 0 END), 0) AS faturamento
+       FROM ordens_servico o
+      WHERE o.criado_em >= ? AND o.criado_em < ? ${escopo ? 'AND o.loja_id = ?' : ''}`,
+    new Date(new Date(janela.de).getTime() - duracaoMs).toISOString(),
+    janela.de,
+    ...(escopo ? [escopo] : []),
+  );
+
+  const variacao = (atual, antigo) => {
+    const a = Number(atual ?? 0);
+    const b = Number(antigo ?? 0);
+    if (b === 0) return a === 0 ? 0 : null; // null = "novo" (sem base de comparação)
+    return Number((((a - b) / b) * 100).toFixed(1));
+  };
+
   const porLoja = await consultar(
     `SELECT l.id, l.nome, l.codigo, l.ativo,
             COUNT(o.id) AS total,
@@ -54,7 +75,8 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
             SUM(CASE WHEN o.status = 'pronto' THEN 1 ELSE 0 END) AS pronto,
             SUM(CASE WHEN o.status = 'retirado' THEN 1 ELSE 0 END) AS retirado,
             SUM(CASE WHEN o.status = 'cancelado' THEN 1 ELSE 0 END) AS cancelado,
-            SUM(CASE WHEN o.status = 'retirado' AND o.retirado_em >= ? THEN 1 ELSE 0 END) AS retirados_periodo
+            SUM(CASE WHEN o.status = 'retirado' AND o.retirado_em >= ? THEN 1 ELSE 0 END) AS retirados_periodo,
+            COALESCE(SUM(CASE WHEN o.status = 'retirado' THEN o.valor ELSE 0 END), 0) AS faturamento
        FROM lojas l
        LEFT JOIN ordens_servico o ON o.loja_id = l.id AND o.criado_em >= ? AND o.criado_em <= ?
       WHERE l.ativo = 1 ${escopo ? 'AND l.id = ?' : ''}
@@ -70,6 +92,7 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
     `SELECT u.id, u.nome, l.nome AS loja_nome,
             COUNT(o.id) AS concluidas,
             SUM(CASE WHEN o.concluido_em IS NOT NULL THEN 1 ELSE 0 END) AS concluidas_com_data,
+            COALESCE(SUM(CASE WHEN o.status = 'retirado' THEN o.valor ELSE 0 END), 0) AS faturamento,
             AVG(CASE WHEN o.concluido_em IS NOT NULL
                      THEN (julianday(o.concluido_em) - julianday(o.iniciado_em)) * 24.0 END) AS horas_medias
        FROM usuarios u
@@ -80,12 +103,45 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
              AND o.concluido_em >= ? AND o.concluido_em <= ?
       WHERE u.papel = 'tecnico' AND u.ativo = 1 ${escopo ? 'AND u.loja_id = ?' : ''}
       GROUP BY u.id
-      ORDER BY concluidas_com_data DESC, u.nome COLLATE NOCASE
+      ORDER BY faturamento DESC, concluidas_com_data DESC, u.nome COLLATE NOCASE
       LIMIT 10`,
     janela.de,
     janela.ate,
     ...(escopo ? [escopo] : []),
   );
+
+  /* ------------------------------ Financeiro ------------------------------ */
+  const comissaoPct = await lerNumeroConfig(CHAVES.COMISSAO_PERCENTUAL, 30);
+
+  const caixa = await consultarUm(
+    `SELECT COUNT(*) AS entregas,
+            COALESCE(SUM(o.valor), 0) AS faturamento,
+            COALESCE(SUM(CASE WHEN o.valor_pago = 1 THEN o.valor ELSE 0 END), 0) AS recebido,
+            COALESCE(SUM(CASE WHEN o.valor_pago = 0 THEN o.valor ELSE 0 END), 0) AS a_receber
+       FROM ordens_servico o
+      WHERE o.status = 'retirado' AND o.retirado_em >= ? AND o.retirado_em <= ?
+        ${escopo ? 'AND o.loja_id = ?' : ''}`,
+    janela.de,
+    janela.ate,
+    ...(escopo ? [escopo] : []),
+  );
+
+  const porPagamento = await consultar(
+    `SELECT COALESCE(o.forma_pagamento, 'nao_informado') AS forma,
+            COUNT(*) AS total,
+            COALESCE(SUM(o.valor), 0) AS valor
+       FROM ordens_servico o
+      WHERE o.status = 'retirado' AND o.retirado_em >= ? AND o.retirado_em <= ?
+        ${escopo ? 'AND o.loja_id = ?' : ''}
+      GROUP BY forma
+      ORDER BY valor DESC`,
+    janela.de,
+    janela.ate,
+    ...(escopo ? [escopo] : []),
+  );
+
+  const entregas = Number(caixa?.entregas ?? 0);
+  const faturamento = Number(caixa?.faturamento ?? 0);
 
   const serie = await consultar(
     `SELECT substr(o.criado_em, 1, 10) AS dia,
@@ -103,11 +159,19 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
   return {
     geradoEm: new Date().toISOString(),
     periodo: { de: janela.de.slice(0, 10), ate: janela.ate.slice(0, 10) },
-    escopo: { lojaId: escopo, todas: usuario.papel === 'admin' && !escopo },
+    escopo: { lojaId: escopo, todas: escopoRede(usuario) && !escopo },
     status: { ...contagens, abertas, total: Object.values(contagens).reduce((a, b) => a + b, 0) },
     periodoResumo: {
       total: Number(periodo?.total ?? 0),
       faturamento: Number(periodo?.faturamento ?? 0),
+    },
+    comparativo: {
+      anterior: {
+        total: Number(anterior?.total ?? 0),
+        faturamento: Number(anterior?.faturamento ?? 0),
+      },
+      variacaoFaturamento: variacao(periodo?.faturamento, anterior?.faturamento),
+      variacaoEntradas: variacao(periodo?.total, anterior?.total),
     },
     porLoja: porLoja.map((l) => ({
       ...l,
@@ -119,13 +183,33 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
       retirado: Number(l.retirado ?? 0),
       cancelado: Number(l.cancelado ?? 0),
       retirados_periodo: Number(l.retirados_periodo ?? 0),
+      faturamento: Number(l.faturamento ?? 0),
     })),
-    produtividade: produtividade.map((t) => ({
-      ...t,
-      concluidas: Number(t.concluidas ?? 0),
-      concluidas_com_data: Number(t.concluidas_com_data ?? 0),
-      horas_medias: t.horas_medias == null ? null : Number(t.horas_medias),
-    })),
+    produtividade: produtividade.map((t) => {
+      const faturamentoTecnico = Number(t.faturamento ?? 0);
+      return {
+        ...t,
+        concluidas: Number(t.concluidas ?? 0),
+        concluidas_com_data: Number(t.concluidas_com_data ?? 0),
+        faturamento: faturamentoTecnico,
+        comissao: Number(((faturamentoTecnico * comissaoPct) / 100).toFixed(2)),
+        horas_medias: t.horas_medias == null ? null : Number(t.horas_medias),
+      };
+    }),
+    financeiro: {
+      comissaoPercentual: comissaoPct,
+      entregas,
+      faturamento,
+      recebido: Number(caixa?.recebido ?? 0),
+      aReceber: Number(caixa?.a_receber ?? 0),
+      ticketMedio: entregas > 0 ? Number((faturamento / entregas).toFixed(2)) : 0,
+      comissaoTotal: Number(((faturamento * comissaoPct) / 100).toFixed(2)),
+      porFormaPagamento: porPagamento.map((p) => ({
+        forma: p.forma,
+        total: Number(p.total ?? 0),
+        valor: Number(p.valor ?? 0),
+      })),
+    },
     serie: serie.map((p) => ({ ...p, entrada: Number(p.entrada), retiradas: Number(p.retiradas ?? 0) })),
   };
 }

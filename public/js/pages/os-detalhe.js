@@ -3,7 +3,8 @@ import { icone } from '../icons.js';
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { cartaoFoto } from '../components/cartao-os.js';
-import { modalFinalizarOS, modalRetirarOS, modalComentar, modalAnexarFoto } from '../components/modais-os.js';
+import { modalFinalizarOS, modalRetirarOS, modalComentar, modalAnexarFoto, modalOrcamento, modalDecisaoOrcamento, copiarLink } from '../components/modais-os.js';
+import { qrImagem } from '../qr.js';
 import {
   esqueletoLista,
   faixaErro,
@@ -12,6 +13,7 @@ import {
   toastErro,
   ocupado,
   confirmar,
+  abrirModal,
   badgeStatus,
   visualizarFotos,
 } from '../ui.js';
@@ -41,7 +43,38 @@ const ICONE_EVENTO = {
   foto: 'imagem',
   edicao: 'editar',
   reabertura: 'recarregar',
+  orcamento: 'whatsapp',
+  orcamento_aprovado: 'check',
+  orcamento_recusado: 'x',
+  garantia: 'escudo',
 };
+
+const ROTULOS_PAGAMENTO = {
+  dinheiro: 'Dinheiro',
+  pix: 'Pix',
+  credito: 'Cartão de crédito',
+  debito: 'Cartão de débito',
+  outro: 'Outro',
+};
+
+const ROTULOS_CHECKLIST_DETALHE = {
+  liga: 'Liga / dá sinal de vida',
+  telaTrincada: 'Tela trincada',
+  carcacaAmassada: 'Carcaça amassada',
+  oxidacao: 'Sinais de oxidação',
+  queda: 'Já sofreu queda',
+  molhou: 'Já molhou',
+  senhaInformada: 'Cliente informou a senha',
+  backupAutorizado: 'Autoriza backup dos dados',
+};
+
+function ultimos4(telefone) {
+  return String(telefone ?? '').replace(/\D/g, '').slice(-4);
+}
+
+function linkRastreio(os) {
+  return `${window.location.origin}/#/rastreio/${encodeURIComponent(os.numero_os)}?tel=${ultimos4(os.cliente_telefone)}`;
+}
 
 export function paginaOSDetalhe(container, params) {
   const osId = Number(params.id);
@@ -60,7 +93,7 @@ export function paginaOSDetalhe(container, params) {
       dados = await api.get(`/api/ordens/${osId}`);
       desenhar();
       if (abrirFinalizar && dados.acoes.podeFinalizar) {
-        modalFinalizarOS({ ordem: dados.ordem, aoConcluir: () => carregar() });
+        modalFinalizarOS({ ordem: dados.ordem, garantiaPadrao: dados.garantiaPadraoDias, aoConcluir: () => carregar() });
       }
     } catch (erro) {
       montar(
@@ -156,7 +189,7 @@ export function paginaOSDetalhe(container, params) {
       acoes.podeFinalizar
         ? h(
             'button.btn.btn--sucesso',
-            { type: 'button', onclick: () => modalFinalizarOS({ ordem: os, aoConcluir: () => carregar() }) },
+            { type: 'button', onclick: () => modalFinalizarOS({ ordem: os, garantiaPadrao: dados.garantiaPadraoDias, aoConcluir: () => carregar() }) },
             icone('check', { tamanho: 16 }),
             'Finalizar serviço',
           )
@@ -191,6 +224,9 @@ export function paginaOSDetalhe(container, params) {
       acoes.podeReabrir
         ? h('button.btn.btn--secundario', { type: 'button', onclick: () => reabrirOS(os) }, icone('recarregar', { tamanho: 16 }), 'Reabrir OS')
         : null,
+      acoes.podeGarantia
+        ? h('button.btn.btn--secundario', { type: 'button', onclick: () => abrirGarantia(os) }, icone('escudo', { tamanho: 16 }), 'Abrir OS em garantia')
+        : null,
       store.ehAdmin
         ? h('button.btn.btn--perigo', { type: 'button', onclick: () => excluirOS(os) }, icone('x', { tamanho: 16 }), 'Excluir OS')
         : null,
@@ -215,6 +251,14 @@ export function paginaOSDetalhe(container, params) {
     const colunaEsquerda = h(
       'div.pilha--grande.pilha',
       {},
+      os.garantia_de_os_id
+        ? h(
+            'div.faixa-aviso',
+            {},
+            icone('escudo', { tamanho: 18 }),
+            h('span', { style: { flex: '1' } }, 'Esta OS é um retorno em garantia. Não cobrar novamente o mesmo serviço.'),
+          )
+        : null,
       statusAtual,
       h(
         'div.card',
@@ -292,8 +336,22 @@ export function paginaOSDetalhe(container, params) {
           h('span.kv__valor.texto-forte', {}, moeda(os.valor)),
           h('span.kv__chave', {}, 'Pagamento'),
           h('span.kv__valor', {}, os.valor_pago ? 'Confirmado' : 'Pendente / não aplicável'),
+          os.forma_pagamento ? h('span.kv__chave', {}, 'Forma de pagamento') : null,
+          os.forma_pagamento ? h('span.kv__valor', {}, ROTULOS_PAGAMENTO[os.forma_pagamento] ?? os.forma_pagamento) : null,
+          os.garantia_ate
+            ? h('span.kv__chave', {}, 'Garantia')
+            : os.garantia_dias
+              ? h('span.kv__chave', {}, 'Garantia')
+              : null,
+          os.garantia_ate
+            ? h('span.kv__valor', {}, `Até ${dataHora(os.garantia_ate).slice(0, 10)} (${os.garantia_dias ?? 90} dias)`)
+            : os.garantia_dias
+              ? h('span.kv__valor', {}, `${os.garantia_dias} dias a partir da entrega`)
+              : null,
         ),
       ),
+      cartaoOrcamento(os, dados, carregar),
+      cartaoChecklist(os),
       h(
         'div.card',
         {},
@@ -345,7 +403,7 @@ export function paginaOSDetalhe(container, params) {
       ),
     );
 
-    const colunaDireita = h('div.pilha--grande.pilha', {}, painelAcoes, linhaTempo);
+    const colunaDireita = h('div.pilha--grande.pilha', {}, painelAcoes, cartaoRastreio(os, dados.whatsapp), linhaTempo);
 
     montar(areaPrincipal, cabecalho, h('div.grade--lateral.grade', {}, colunaEsquerda, colunaDireita));
   }
@@ -433,6 +491,22 @@ export function paginaOSDetalhe(container, params) {
     }
   }
 
+  async function abrirGarantia(os) {
+    const texto = await pedirObservacao({
+      titulo: 'Abrir OS em garantia',
+      descricao: `Será criada uma nova OS vinculada à ${os.numero_os}, sem cobrar o mesmo serviço. Garantia até ${dataHora(os.garantia_ate).slice(0, 10)}.`,
+      textoConfirmar: 'Abrir em garantia',
+    });
+    if (texto === null) return;
+    try {
+      const resposta = await api.post(`/api/ordens/${os.id}/garantia`, { descricao: texto || null });
+      toastSucesso(resposta.mensagem, { titulo: 'Garantia aberta' });
+      window.location.hash = `/ordens/${resposta.ordem.id}`;
+    } catch (erro) {
+      toastErro(erro.message, { titulo: 'Não foi possível abrir a garantia' });
+    }
+  }
+
   async function gerarPdf(botao, acao, rotulo) {
     ocupado(botao, true, 'Gerando…');
     try {
@@ -478,6 +552,156 @@ export function paginaOSDetalhe(container, params) {
       toastErro(erro.message, { titulo: 'Não foi possível excluir' });
     }
   }
+}
+
+function cartaoOrcamento(os, dados, recarregar) {
+  const orc = dados.orcamento ?? { status: 'sem_orcamento', rotulo: 'Sem orçamento' };
+  const podeEnviar = store.pode('os.finalizar') && !['retirado', 'cancelado'].includes(os.status);
+  const classeBadge = {
+    pendente: 'badge--aguardando',
+    aprovado: 'badge--pronto',
+    recusado: 'badge--cancelado',
+    sem_orcamento: 'badge--baixa',
+  }[orc.status] ?? 'badge--baixa';
+
+  const acoes = [];
+  if (podeEnviar) {
+    acoes.push(
+      h(
+        'button.btn.btn--primario.btn--pequeno',
+        { type: 'button', onclick: () => modalOrcamento({ ordem: os, garantiaPadrao: dados.garantiaPadraoDias, aoConcluir: recarregar }) },
+        icone('whatsapp', { tamanho: 15 }),
+        orc.status === 'sem_orcamento' ? 'Enviar orçamento' : 'Reenviar orçamento',
+      ),
+    );
+  }
+  if (orc.status === 'pendente') {
+    acoes.push(
+      h('button.btn.btn--secundario.btn--pequeno', { type: 'button', onclick: () => modalDecisaoOrcamento({ ordem: os, aoConcluir: recarregar }) }, icone('check', { tamanho: 15 }), 'Registrar resposta'),
+    );
+    if (dados.linkAprovacao) {
+      acoes.push(h('button.btn.btn--fantasma.btn--pequeno', { type: 'button', onclick: () => copiarLink(dados.linkAprovacao) }, icone('olho', { tamanho: 15 }), 'Copiar link'));
+    }
+  }
+
+  return h(
+    'div.card',
+    {},
+    h('div.card__cabecalho', {}, h('h3', {}, 'Orçamento'), h('span.badge.badge--sem-ponto', { class: classeBadge }, orc.rotulo ?? 'Sem orçamento')),
+    h(
+      'div.card__corpo.pilha',
+      {},
+      orc.valor != null
+        ? h('div.orcamento__valor', {}, moeda(orc.valor))
+        : h('p.texto-suave', {}, 'Nenhum orçamento enviado. Lance o valor e mande o link para o cliente aprovar antes de executar o serviço.'),
+      orc.observacao ? h('p.texto-pequeno.texto-suave', {}, orc.observacao) : null,
+      orc.criadoEm ? h('p.texto-mini.texto-fraco', {}, `Enviado em ${dataHora(orc.criadoEm)}`) : null,
+      orc.decididoEm ? h('p.texto-mini.texto-fraco', {}, `Respondido em ${dataHora(orc.decididoEm)}`) : null,
+      acoes.length ? h('div.compartilhar', {}, ...acoes) : null,
+      dados.linkAprovacao && orc.status === 'pendente'
+        ? h('div.qr-caixa', {}, qrImagem(dados.linkAprovacao, { tamanho: 148, alt: 'QR do orçamento' }), h('span.texto-mini.texto-fraco', {}, 'O cliente escaneia e responde.'))
+        : null,
+    ),
+  );
+}
+
+function cartaoChecklist(os) {
+  let itens = null;
+  try {
+    itens = os.checklist ? JSON.parse(os.checklist) : null;
+  } catch {
+    itens = null;
+  }
+  if (!itens) {
+    return h(
+      'div.card',
+      {},
+      h('div.card__cabecalho', {}, h('h3', {}, 'Checklist técnico')),
+      h('div.card__corpo', {}, h('p.texto-suave', {}, 'Nenhum item de vistoria registrado na entrada.')),
+    );
+  }
+  const linhas = Object.keys(ROTULOS_CHECKLIST_DETALHE)
+    .filter((chave) => itens[chave] !== undefined)
+    .map((chave) =>
+      h(
+        'div.linha',
+        { style: { gap: '8px' } },
+        icone(itens[chave] ? 'check' : 'x', { tamanho: 15 }),
+        h('span', { class: itens[chave] ? 'checklist__marcado' : 'checklist__nao' }, ROTULOS_CHECKLIST_DETALHE[chave]),
+      ),
+    );
+
+  return h(
+    'div.card',
+    {},
+    h('div.card__cabecalho', {}, h('h3', {}, 'Checklist técnico'), h('span.texto-mini.texto-suave', {}, 'Vistoria da entrada')),
+    h(
+      'div.card__corpo.pilha--pequena.pilha',
+      {},
+      linhas.length ? h('div.checklist__resumo', {}, ...linhas) : null,
+      itens.itensDeixados ? h('div', {}, h('div.rotulo-flutuante', {}, 'Itens deixados'), h('p', {}, itens.itensDeixados)) : null,
+      itens.observacoes ? h('div', {}, h('div.rotulo-flutuante', {}, 'Observações'), h('p', {}, itens.observacoes)) : null,
+    ),
+  );
+}
+
+function cartaoRastreio(os, whatsapp) {
+  const link = linkRastreio(os);
+  return h(
+    'div.card',
+    {},
+    h('div.card__cabecalho', {}, h('h3', {}, 'Acompanhamento do cliente'), h('span.texto-mini.texto-suave', {}, 'QR e link')),
+    h(
+      'div.card__corpo.pilha',
+      {},
+      h('div.qr-caixa', {}, qrImagem(link, { tamanho: 148, alt: 'QR de rastreio da OS' }), h('span.texto-mini.texto-fraco', {}, 'O cliente escaneia e acompanha o status sem ligar.')),
+      h('div.link-copiavel', {}, link),
+      h(
+        'div.compartilhar',
+        {},
+        h('button.btn.btn--secundario.btn--pequeno', { type: 'button', onclick: () => copiarLink(link) }, icone('olho', { tamanho: 15 }), 'Copiar link'),
+        whatsapp
+          ? h(
+              'a.btn.btn--primario.btn--pequeno',
+              {
+                href: `https://wa.me/${whatsapp}?text=${encodeURIComponent(`Olá, ${String(os.cliente_nome).split(' ')[0]}! Acompanhe sua OS ${os.numero_os} por aqui: ${link}`)}`,
+                target: '_blank',
+                rel: 'noopener',
+              },
+              icone('whatsapp', { tamanho: 15 }),
+              'Enviar link',
+            )
+          : null,
+      ),
+    ),
+  );
+}
+
+function pedirObservacao({ titulo, descricao, textoConfirmar = 'Confirmar' }) {
+  return new Promise((resolve) => {
+    const campoTexto = h('textarea.area-texto', { rows: 3, placeholder: 'Descreva o que voltou com problema (opcional).' });
+    const botao = h('button.btn.btn--primario', { type: 'button' }, icone('escudo', { tamanho: 16 }), textoConfirmar);
+    const formulario = h(
+      'form.pilha',
+      {
+        novalidate: true,
+        onsubmit: (evento) => {
+          evento.preventDefault();
+          resolve(campoTexto.value.trim());
+          modal.fechar();
+        },
+      },
+      h('div.campo', {}, h('label.campo__rotulo', {}, 'Motivo do retorno'), campoTexto),
+    );
+    botao.addEventListener('click', () => formulario.requestSubmit());
+    const modal = abrirModal({
+      titulo,
+      descricao,
+      corpo: formulario,
+      rodape: [h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'), botao],
+      aoFechar: () => resolve(null),
+    });
+  });
 }
 
 function pedirMotivo(titulo, descricao) {

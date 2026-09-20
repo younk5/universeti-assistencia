@@ -7,6 +7,7 @@ import { criarAssinatura } from '../assinatura.js';
 import { recortarAssinatura, formatarBytes } from '../image.js';
 import { moeda, telefone as formatarTelefone } from '../format.js';
 import { ROTULOS_TIPO_FOTO } from '../constantes.js';
+import { qrImagem } from '../qr.js';
 
 function campo(rotulo, elemento, { dica = null, opcional = false } = {}) {
   return h(
@@ -39,7 +40,7 @@ async function enviarFoto(ordemId, captura, tipo, legenda) {
 /* Finalizar OS                                                               */
 /* -------------------------------------------------------------------------- */
 
-export function modalFinalizarOS({ ordem, aoConcluir }) {
+export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
   const servico = h('textarea.area-texto', {
     rows: 3,
     required: true,
@@ -47,7 +48,7 @@ export function modalFinalizarOS({ ordem, aoConcluir }) {
   });
   const pecas = h('input.entrada', { placeholder: 'Ex: Tela OLED, adesivo de vedação' });
   const valor = h('input.entrada', { type: 'text', inputMode: 'decimal', placeholder: '480,00', value: ordem.valor ? String(ordem.valor).replace('.', ',') : '' });
-  const garantia = h('input.entrada', { type: 'number', min: '0', max: '3650', placeholder: '90', inputMode: 'numeric' });
+  const garantia = h('input.entrada', { type: 'number', min: '0', max: '3650', placeholder: '90', inputMode: 'numeric', value: String(ordem.garantia_dias ?? garantiaPadrao ?? 90) });
   const observacoes = h('textarea.area-texto', { rows: 2, placeholder: 'Observações para o histórico (ex: cliente autorizou o valor por WhatsApp).' });
 
   const captura = criarCaptura({
@@ -139,6 +140,17 @@ export function modalRetirarOS({ ordem, aoConcluir }) {
     h('option', { value: '1' }, 'Pagamento confirmado'),
     h('option', { value: '0' }, 'Pagamento pendente / a combinar'),
   );
+  const formaPagamento = h(
+    'select.selecao',
+    {},
+    h('option', { value: '' }, 'Não informar'),
+    h('option', { value: 'pix' }, 'Pix'),
+    h('option', { value: 'dinheiro' }, 'Dinheiro'),
+    h('option', { value: 'credito' }, 'Cartão de crédito'),
+    h('option', { value: 'debito' }, 'Cartão de débito'),
+    h('option', { value: 'outro' }, 'Outro'),
+    ordem.forma_pagamento ? h('option', { value: ordem.forma_pagamento, selected: true }, 'Manter a anterior') : null,
+  );
 
   const captura = criarCaptura({
     titulo: 'Foto da entrega',
@@ -169,6 +181,7 @@ export function modalRetirarOS({ ordem, aoConcluir }) {
             recebidoPor: recebidoPor.value.trim() || ordem.cliente_nome,
             observacoes: observacoes.value.trim() || null,
             valorPago: pagamento.value === '1',
+            formaPagamento: formaPagamento.value || null,
           });
 
           let aviso = null;
@@ -213,6 +226,10 @@ export function modalRetirarOS({ ordem, aoConcluir }) {
     ),
     campo('Quem está retirando', recebidoPor),
     campo('Situação do pagamento', pagamento),
+    campo('Forma de pagamento', formaPagamento, { opcional: true }),
+    ordem.garantia_dias
+      ? h('p.texto-mini.texto-fraco', {}, `Garantia do serviço: ${ordem.garantia_dias} dias a partir da entrega.`)
+      : null,
     campo('Observações', observacoes, { opcional: true }),
     h(
       'label.linha',
@@ -352,6 +369,168 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
     ],
   });
   return modal;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Orçamento — envio e decisão                                                */
+/* -------------------------------------------------------------------------- */
+
+export function modalOrcamento({ ordem, aoConcluir, garantiaPadrao = 90 }) {
+  const valor = h('input.entrada', { type: 'text', inputMode: 'decimal', placeholder: 'Ex: 380,00', value: ordem.orcamento_valor ? String(ordem.orcamento_valor).replace('.', ',') : ordem.valor ? String(ordem.valor).replace('.', ',') : '' });
+  const pecas = h('input.entrada', { placeholder: 'Ex: Tela OLED, adesivo de vedação' });
+  const observacao = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: valor válido por 7 dias; se aparecer outro defeito avisamos antes.' });
+  const erro = linhaErro();
+  const corpo = h('div');
+  const botao = h('button.btn.btn--primario', { type: 'button', onclick: () => formulario.requestSubmit() }, icone('check', { tamanho: 16 }), 'Gerar link de aprovação');
+
+  const formulario = h(
+    'form.pilha',
+    {
+      novalidate: true,
+      onsubmit: async (evento) => {
+        evento.preventDefault();
+        erro.classList.add('oculto');
+        const numero = valor.value.trim() ? Number(valor.value.replace(/\./g, '').replace(',', '.')) : NaN;
+        if (!Number.isFinite(numero) || numero < 0) {
+          montar(erro, faixaAviso('Informe um valor válido para o orçamento.'));
+          erro.classList.remove('oculto');
+          valor.focus();
+          return;
+        }
+        ocupado(botao, true, 'Gerando…');
+        try {
+          const resposta = await api.post(`/api/ordens/${ordem.id}/orcamento`, {
+            valor: numero,
+            pecas: pecas.value.trim() || null,
+            observacao: observacao.value.trim() || null,
+          });
+          toastSucesso(resposta.mensagem ?? 'Orçamento enviado.');
+          aoConcluir?.(resposta);
+          mostrarResultado(resposta);
+        } catch (e) {
+          montar(erro, faixaAviso(e.message));
+          erro.classList.remove('oculto');
+          toastErro(e.message);
+        } finally {
+          ocupado(botao, false);
+        }
+      },
+    },
+    erro,
+    campo('Valor do orçamento (R$) *', valor, { dica: 'O cliente responde aprovar ou recusar pelo link.' }),
+    campo('Peças previstas', pecas, { opcional: true }),
+    campo('Observação para o cliente', observacao, { opcional: true }),
+  );
+
+  function mostrarResultado(resposta) {
+    const caixaLink = h('div.link-copiavel', {}, resposta.link);
+    botao.classList.add('oculto');
+    montar(
+      corpo,
+      h(
+        'div.pilha',
+        {},
+        h('div.faixa-sucesso', {}, icone('check', { tamanho: 20 }), h('div', {}, h('div.faixa-erro__titulo', {}, 'Orçamento pronto para enviar'), h('div.faixa-erro__texto', {}, `R$ ${Number(resposta.orcamento?.valor ?? 0).toFixed(2)} · aguardando resposta do cliente`))),
+        h('div.qr-caixa', {}, qrImagem(resposta.link, { tamanho: 168, alt: 'QR do orçamento' }), h('span.texto-mini.texto-fraco', {}, 'O cliente pode escanear para responder.')),
+        caixaLink,
+        h(
+          'div.compartilhar',
+          {},
+          h('button.btn.btn--secundario', { type: 'button', onclick: () => copiarLink(caixaLink.textContent) }, icone('olho', { tamanho: 16 }), 'Copiar link'),
+          resposta.whatsapp
+            ? h(
+                'a.btn.btn--primario',
+                {
+                  href: `https://wa.me/${resposta.whatsapp}?text=${encodeURIComponent(mensagemOrcamento(ordem, resposta.orcamento?.valor, resposta.link))}`,
+                  target: '_blank',
+                  rel: 'noopener',
+                },
+                icone('whatsapp', { tamanho: 16 }),
+                'Enviar no WhatsApp',
+              )
+            : null,
+        ),
+      ),
+    );
+  }
+
+  montar(corpo, formulario);
+
+  const modal = abrirModal({
+    titulo: ordem.orcamento_status === 'pendente' ? 'Reenviar orçamento' : 'Enviar orçamento ao cliente',
+    descricao: `OS ${ordem.numero_os} · ${ordem.cliente_nome}`,
+    corpo,
+    rodape: [h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Fechar'), botao],
+  });
+  void garantiaPadrao;
+  return modal;
+}
+
+export function modalDecisaoOrcamento({ ordem, aoConcluir }) {
+  const observacao = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: cliente respondeu por telefone às 14h.' });
+  const erro = linhaErro();
+  const botao = h('button.btn.btn--sucesso', { type: 'button' }, icone('check', { tamanho: 16 }), 'Registrar resposta');
+
+  const decidir = async (decisao) => {
+    erro.classList.add('oculto');
+    ocupado(botao, true, 'Registrando…');
+    try {
+      const resposta = await api.post(`/api/ordens/${ordem.id}/orcamento/decisao`, {
+        decisao,
+        observacao: observacao.value.trim() || null,
+      });
+      modal.fechar();
+      toastSucesso(resposta.mensagem ?? 'Resposta registrada.');
+      aoConcluir?.(resposta);
+    } catch (e) {
+      montar(erro, faixaAviso(e.message));
+      erro.classList.remove('oculto');
+      toastErro(e.message);
+    } finally {
+      ocupado(botao, false);
+    }
+  };
+
+  const escolha = h(
+    'div.rastreio__acoes',
+    {},
+    h('button.btn.btn--sucesso.btn--bloco', { type: 'button', onclick: () => decidir('aprovado') }, icone('check', { tamanho: 16 }), 'Cliente aprovou'),
+    h('button.btn.btn--perigo.btn--bloco', { type: 'button', onclick: () => decidir('recusado') }, icone('x', { tamanho: 16 }), 'Cliente recusou'),
+  );
+
+  const modal = abrirModal({
+    titulo: 'Registrar resposta do cliente',
+    descricao: `OS ${ordem.numero_os} · orçamento de ${moeda(ordem.orcamento_valor)}`,
+    corpo: h(
+      'div.pilha',
+      {},
+      erro,
+      faixaAviso('Use quando o cliente responder por telefone ou no balcão. A decisão fica no histórico.'),
+      campo('Observação', observacao, { opcional: true }),
+      escolha,
+    ),
+    rodape: [h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar')],
+  });
+  void botao;
+  return modal;
+}
+
+function mensagemOrcamento(ordem, valor, link) {
+  const primeiro = String(ordem.cliente_nome ?? '').split(' ')[0];
+  return (
+    `Olá, ${primeiro}! Fizemos o orçamento do seu ${ordem.marca} ${ordem.modelo} (OS ${ordem.numero_os}).\n` +
+    `Valor: ${moeda(valor)}.\n` +
+    `Para aprovar ou recusar, é só abrir o link: ${link}`
+  );
+}
+
+export async function copiarLink(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    toastSucesso('Link copiado.', { titulo: 'Pronto' });
+  } catch {
+    toastErro('Não foi possível copiar automaticamente. Toque e segure o link para copiar.', { titulo: 'Copie manualmente' });
+  }
 }
 
 export { enviarFoto };

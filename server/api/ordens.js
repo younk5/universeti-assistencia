@@ -12,9 +12,19 @@ import {
   registrarEvento,
   validarTransicao,
   excluirOS,
+  abrirGarantia,
 } from '../services/ordens.js';
 import { transacao, consultar, consultarUm } from '../db.js';
 import { salvarFoto, buscarFoto, lerArquivoFoto, TIPOS_FOTO, excluirFoto } from '../services/fotos.js';
+import {
+  criarOrcamento,
+  decidirOrcamentoInterno,
+  resumoOrcamentos,
+  urlAprovacao,
+  STATUS_ORCAMENTO,
+  ROTULOS_ORCAMENTO,
+} from '../services/orcamentos.js';
+import { lerNumeroConfig, CHAVES } from '../services/configuracoes.js';
 import {
   exigirTexto,
   exigirTelefone,
@@ -24,10 +34,76 @@ import {
   agoraISO,
   telefoneParaWhatsapp,
 } from '../utils.js';
-import { exigirAutenticacao, exigirPermissao, pode } from '../auth.js';
+import { exigirAutenticacao, exigirPermissao, pode, escopoRede } from '../auth.js';
 import { ErroApp, invalido, naoEncontrado, semPermissao } from '../erros.js';
 
 export const TIPO_APARELHO = 'Celular';
+
+/** Campos booleanos do checklist técnico preenchido na entrada. */
+export const CHECKLIST_BOOLEANOS = [
+  'liga',
+  'telaTrincada',
+  'carcacaAmassada',
+  'oxidacao',
+  'queda',
+  'molhou',
+  'senhaInformada',
+  'backupAutorizado',
+];
+
+export const ROTULOS_CHECKLIST = {
+  liga: 'Liga / dá sinal de vida',
+  telaTrincada: 'Tela trincada',
+  carcacaAmassada: 'Carcaça amassada',
+  oxidacao: 'Sinais de oxidação',
+  queda: 'Já sofreu queda',
+  molhou: 'Já molhou',
+  senhaInformada: 'Cliente informou a senha',
+  backupAutorizado: 'Autoriza backup dos dados',
+};
+
+/**
+ * Normaliza o checklist técnico. Aceita apenas chaves conhecidas e limita o
+ * tamanho total — o valor é gravado como JSON na coluna `checklist`.
+ */
+export function normalizarChecklist(bruto) {
+  if (bruto === undefined || bruto === null || bruto === '') return null;
+  let objeto = bruto;
+  if (typeof bruto === 'string') {
+    try {
+      objeto = JSON.parse(bruto);
+    } catch {
+      throw invalido('Checklist técnico inválido.', { campo: 'checklist' });
+    }
+  }
+  if (typeof objeto !== 'object' || Array.isArray(objeto)) {
+    throw invalido('Checklist técnico inválido.', { campo: 'checklist' });
+  }
+
+  const saida = {};
+  for (const chave of CHECKLIST_BOOLEANOS) {
+    if (objeto[chave] === undefined) continue;
+    saida[chave] = Boolean(objeto[chave]);
+  }
+  const itens = exigirTexto(objeto.itensDeixados, 'itens deixados', { max: 300, opcional: true });
+  const obs = exigirTexto(objeto.observacoes, 'observações do checklist', { max: 500, opcional: true });
+  if (itens) saida.itensDeixados = itens;
+  if (obs) saida.observacoes = obs;
+
+  if (!Object.keys(saida).length) return null;
+  const json = JSON.stringify(saida);
+  if (json.length > 2000) throw invalido('Checklist técnico muito extenso.', { campo: 'checklist' });
+  return json;
+}
+
+export const FORMAS_PAGAMENTO = ['dinheiro', 'pix', 'credito', 'debito', 'outro'];
+export const ROTULOS_PAGAMENTO = {
+  dinheiro: 'Dinheiro',
+  pix: 'Pix',
+  credito: 'Cartão de crédito',
+  debito: 'Cartão de débito',
+  outro: 'Outro',
+};
 
 function normalizarPayloadOS(corpo) {
   return {
@@ -41,6 +117,7 @@ function normalizarPayloadOS(corpo) {
     acessorios: exigirTexto(corpo.acessorios, 'acessórios deixados', { max: 300, opcional: true }),
     defeitoRelatado: exigirTexto(corpo.defeitoRelatado, 'defeito relatado', { min: 3, max: 2000 }),
     estadoAparelho: exigirTexto(corpo.estadoAparelho, 'estado do aparelho', { max: 1000, opcional: true }),
+    checklist: normalizarChecklist(corpo.checklist),
     valorEstimado: exigirNumero(corpo.valorEstimado, 'valor estimado', { min: 0, max: 999999 }),
   };
 }
@@ -51,13 +128,13 @@ export function registrar(rota) {
     exigirAutenticacao(ctx.usuario);
     const lojas = (await consultar(
       'SELECT id, nome, codigo, endereco, telefone, ativo FROM lojas ORDER BY nome COLLATE NOCASE',
-    )).filter((l) => ctx.usuario.papel === 'admin' || l.id === ctx.usuario.lojaId);
+    )).filter((l) => escopoRede(ctx.usuario) || l.id === ctx.usuario.lojaId);
     const tecnicos = await consultar(
       `SELECT u.id, u.nome, u.loja_id, u.papel FROM usuarios u
         WHERE u.ativo = 1 AND u.papel IN ('tecnico','admin')
-          ${ctx.usuario.papel === 'admin' ? '' : 'AND u.loja_id = ?'}
+          ${escopoRede(ctx.usuario) ? '' : 'AND u.loja_id = ?'}
         ORDER BY u.nome COLLATE NOCASE`,
-      ...(ctx.usuario.papel === 'admin' ? [] : [ctx.usuario.lojaId]),
+      ...(escopoRede(ctx.usuario) ? [] : [ctx.usuario.lojaId]),
     );
     return {
       lojas,
@@ -118,13 +195,64 @@ export function registrar(rota) {
     exigirAutenticacao(ctx.usuario);
     const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
     const [eventos, fotos] = await Promise.all([listarEventos(os.id), listarFotos(os.id)]);
+    const orcamento = await resumoOrcamentos(os);
     return {
       ordem: os,
       eventos,
       fotos,
+      orcamento,
+      linkAprovacao: os.orcamento_token ? urlAprovacao(ctx.req, os.orcamento_token) : null,
+      garantiaPadraoDias: await lerNumeroConfig(CHAVES.GARANTIA_DIAS, 90),
       transicoes: transicoesPermitidas(os, ctx.usuario),
       acoes: acoesDisponiveis(os, ctx.usuario),
       whatsapp: telefoneParaWhatsapp(os.cliente_telefone),
+    };
+  });
+
+  /* ------------------------------- Orçamento ----------------------------- */
+  rota.post('/api/ordens/:id/orcamento', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    exigirPermissao(ctx.usuario, 'os.finalizar');
+    const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
+    const valor = exigirNumero(ctx.corpo.valor, 'valor do orçamento', { min: 0, max: 999999, opcional: false });
+    const observacao = exigirTexto(ctx.corpo.observacao, 'observação', { max: 500, opcional: true });
+    const pecas = exigirTexto(ctx.corpo.pecas, 'peças previstas', { max: 300, opcional: true });
+
+    const { token } = await criarOrcamento(os, ctx.usuario, { valor, observacao, pecas });
+    const atualizada = await buscarOS(os.id, ctx.usuario);
+    const link = urlAprovacao(ctx.req, token);
+    return {
+      ordem: atualizada,
+      orcamento: await resumoOrcamentos(atualizada),
+      link,
+      whatsapp: telefoneParaWhatsapp(os.cliente_telefone),
+      mensagem: `Orçamento de R$ ${Number(valor).toFixed(2)} enviado para aprovação.`,
+    };
+  });
+
+  rota.post('/api/ordens/:id/orcamento/decisao', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    exigirPermissao(ctx.usuario, 'os.comentar');
+    const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
+    const decisao = exigirEnum(ctx.corpo.decisao, 'decisão', [STATUS_ORCAMENTO.APROVADO, STATUS_ORCAMENTO.RECUSADO]);
+    const observacao = exigirTexto(ctx.corpo.observacao, 'observação', { max: 300, opcional: true });
+    const atualizada = await decidirOrcamentoInterno(os, ctx.usuario, { decisao, observacao });
+    return { ordem: atualizada, mensagem: 'Resposta do cliente registrada no histórico.' };
+  });
+
+  /* ------------------------------ Garantia ------------------------------- */
+  rota.post('/api/ordens/:id/garantia', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    exigirPermissao(ctx.usuario, 'os.finalizar');
+    const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
+    const descricao = exigirTexto(ctx.corpo.descricao, 'descrição', { max: 600, opcional: true });
+    const novoId = await abrirGarantia(os, ctx.usuario, { descricao });
+    const nova = await buscarOS(novoId, ctx.usuario);
+    ctx.status = 201;
+    return {
+      ordem: nova,
+      origem: os.numero_os,
+      mensagem: `OS ${nova.numero_os} aberta em garantia (origem ${os.numero_os}).`,
     };
   });
 
@@ -148,7 +276,7 @@ export function registrar(rota) {
     if (!tecnico || !['tecnico', 'admin'].includes(tecnico.papel)) {
       throw invalido('Técnico inválido.', { campo: 'tecnicoId' });
     }
-    if (ctx.usuario.papel !== 'admin' && Number(tecnico.loja_id) !== Number(ctx.usuario.lojaId)) {
+    if (!escopoRede(ctx.usuario) && Number(tecnico.loja_id) !== Number(ctx.usuario.lojaId)) {
       throw semPermissao('Você só pode assumir OS da sua loja.');
     }
     const atualizada = await alterarStatus(os.id, ctx.usuario, STATUS.EM_MANUTENCAO, {
@@ -207,6 +335,7 @@ export function registrar(rota) {
     const pecas = exigirTexto(ctx.corpo.pecasUtilizadas, 'peças utilizadas', { max: 1000, opcional: true });
     const valor = exigirNumero(ctx.corpo.valor, 'valor cobrado', { min: 0, max: 999999, opcional: true });
     const garantiaDias = exigirNumero(ctx.corpo.garantiaDias, 'garantia (dias)', { min: 0, max: 3650, opcional: true });
+    const garantiaEfetiva = garantiaDias ?? (await lerNumeroConfig(CHAVES.GARANTIA_DIAS, 90));
     const observacoes = exigirTexto(ctx.corpo.observacoes, 'observações', { max: 1000, opcional: true });
 
     if (os.status === STATUS.AGUARDANDO) {
@@ -216,7 +345,7 @@ export function registrar(rota) {
     const partes = [`Serviço realizado: ${servicoRealizado}`];
     if (pecas) partes.push(`Peças: ${pecas}`);
     if (valor !== null) partes.push(`Valor: R$ ${valor.toFixed(2)}`);
-    if (garantiaDias) partes.push(`Garantia: ${garantiaDias} dias`);
+    if (garantiaEfetiva) partes.push(`Garantia: ${garantiaEfetiva} dias`);
     if (observacoes) partes.push(`Obs.: ${observacoes}`);
 
     const concluidoEm = await transacao(async (conexao) => {
@@ -241,9 +370,9 @@ export function registrar(rota) {
       await conexao.run(
         `UPDATE ordens_servico
             SET status = ?, concluido_em = ?, valor = COALESCE(?, valor), tecnico_id = COALESCE(tecnico_id, ?),
-                atualizado_em = ?
+                garantia_dias = COALESCE(?, garantia_dias), atualizado_em = ?
           WHERE id = ?`,
-        [STATUS.PRONTO, agora, valor, ctx.usuario.id, agora, os.id],
+        [STATUS.PRONTO, agora, valor, ctx.usuario.id, garantiaDias ?? null, agora, os.id],
       );
 
       await registrarEvento(conexao, {
@@ -275,20 +404,32 @@ export function registrar(rota) {
     const recebidoPor = exigirTexto(ctx.corpo.recebidoPor, 'quem retirou', { max: 120, opcional: true });
     const observacoes = exigirTexto(ctx.corpo.observacoes, 'observações', { max: 500, opcional: true });
     const valorPago = ctx.corpo.valorPago === undefined ? null : ctx.corpo.valorPago ? 1 : 0;
+    const formaPagamento = exigirEnum(ctx.corpo.formaPagamento, 'forma de pagamento', FORMAS_PAGAMENTO, { opcional: true });
+
+    const retiradoEm = agoraISO();
+    const diasGarantia = Number(os.garantia_dias ?? (await lerNumeroConfig(CHAVES.GARANTIA_DIAS, 90))) || 0;
+    const garantiaAte =
+      diasGarantia > 0
+        ? new Date(new Date(retiradoEm).getTime() + diasGarantia * 86400000).toISOString()
+        : null;
 
     const atualizada = await alterarStatus(os.id, ctx.usuario, STATUS.RETIRADO, {
       descricao: [
         `Entrega registrada por ${ctx.usuario.nome}`,
         recebidoPor ? `Recebido por: ${recebidoPor}` : null,
         valorPago === null ? null : valorPago ? 'Pagamento confirmado' : 'Pagamento pendente',
+        formaPagamento ? `Pagamento em ${ROTULOS_PAGAMENTO[formaPagamento] ?? formaPagamento}` : null,
+        garantiaAte ? `Garantia até ${garantiaAte.slice(0, 10)}` : null,
         observacoes,
       ]
         .filter(Boolean)
         .join(' | '),
       campos: {
-        retirado_em: agoraISO(),
+        retirado_em: retiradoEm,
         recebido_por: recebidoPor ?? os.cliente_nome,
         valor_pago: valorPago ?? os.valor_pago,
+        forma_pagamento: formaPagamento ?? os.forma_pagamento ?? null,
+        garantia_ate: garantiaAte,
       },
       tiposEvento: { [STATUS.RETIRADO]: 'retirar' },
     });
@@ -338,7 +479,7 @@ export function registrar(rota) {
     const foto = await buscarFoto(Number(ctx.params.id));
     const os = await consultarUm('SELECT id, loja_id FROM ordens_servico WHERE id = ?', foto.os_id);
     if (!os) throw naoEncontrado('OS da foto não encontrada.');
-    if (ctx.usuario.papel !== 'admin' && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
+    if (!escopoRede(ctx.usuario) && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
       throw semPermissao('Esta foto pertence a outra loja.');
     }
     // A imagem vem do disco ou do Blob, mas só depois da checagem de sessão
@@ -353,7 +494,7 @@ export function registrar(rota) {
     const foto = await buscarFoto(Number(ctx.params.id));
     const os = await consultarUm('SELECT id, loja_id FROM ordens_servico WHERE id = ?', foto.os_id);
     if (!os) throw naoEncontrado('OS da foto não encontrada.');
-    if (ctx.usuario.papel !== 'admin' && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
+    if (!escopoRede(ctx.usuario) && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
       throw semPermissao('Esta foto pertence a outra loja.');
     }
     await excluirFoto(Number(ctx.params.id), ctx.usuario);
@@ -378,12 +519,16 @@ export function registrar(rota) {
     });
     const cabecalhos = [
       'numero_os', 'loja', 'status', 'cliente', 'telefone', 'marca', 'modelo',
-      'cor', 'imei', 'defeito_relatado', 'tecnico', 'valor', 'criado_em', 'iniciado_em', 'concluido_em', 'retirado_em',
+      'cor', 'imei', 'defeito_relatado', 'tecnico', 'valor', 'orcamento',
+      'orcamento_status', 'forma_pagamento', 'garantia_ate',
+      'criado_em', 'iniciado_em', 'concluido_em', 'retirado_em',
     ];
     const linhas = itens.map((o) => [
       o.numero_os, o.loja_nome, ROTULOS_STATUS[o.status] ?? o.status, o.cliente_nome, o.cliente_telefone,
       o.marca, o.modelo, o.cor ?? '', o.imei ?? '', o.defeito_relatado, o.tecnico_nome ?? '',
-      o.valor ?? '', o.criado_em, o.iniciado_em ?? '', o.concluido_em ?? '', o.retirado_em ?? '',
+      o.valor ?? '', o.orcamento_valor ?? '', ROTULOS_ORCAMENTO[o.orcamento_status] ?? '',
+      ROTULOS_PAGAMENTO[o.forma_pagamento] ?? '', o.garantia_ate ?? '',
+      o.criado_em, o.iniciado_em ?? '', o.concluido_em ?? '', o.retirado_em ?? '',
     ]);
     const csv = [cabecalhos, ...linhas].map((linha) => linha.map(celulaCsv).join(';')).join('\r\n');
     return {
@@ -433,6 +578,11 @@ function acoesDisponiveis(os, usuario) {
     podeAnexarFoto: os.status !== STATUS.RETIRADO,
     podeCancelar: os.status !== STATUS.RETIRADO && usuario.papel === 'admin',
     podeReabrir: os.status === STATUS.CANCELADO && usuario.papel === 'admin',
+    podeGarantia:
+      os.status === STATUS.RETIRADO &&
+      Boolean(os.garantia_ate) &&
+      new Date(os.garantia_ate).getTime() > Date.now() &&
+      pode(usuario, 'os.finalizar'),
     tecnicoDesignado: os.tecnico_id ? os.tecnico_nome : null,
   };
 }

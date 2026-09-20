@@ -39,7 +39,7 @@ export async function paginaOrdens(container) {
     'aria-label': 'Buscar ordens de serviço',
   });
 
-  const campoLoja = store.ehAdmin && (store.meta?.lojas ?? []).length
+  const campoLoja = store.escopoRede && (store.meta?.lojas ?? []).length
     ? h('select.selecao', { 'aria-label': 'Loja' },
         h('option', { value: '' }, 'Todas as lojas'),
         ...store.meta.lojas.map((l) => h('option', { value: String(l.id), selected: filtros.lojaId === String(l.id) }, l.nome)))
@@ -304,7 +304,7 @@ export async function paginaOrdens(container) {
           {},
           h('span.texto-pequeno.texto-suave', {}, `${numero(total)} ordem(ns) encontrada(s) · exibindo ${numero(itens.length)}`),
         ),
-        h('div.grade--2.grade', {}, ...itens.map((ordem) => cartaoOS(ordem, { mostrarLoja: store.ehAdmin }))),
+        h('div.grade--2.grade', {}, ...itens.map((ordem) => cartaoOS(ordem, { mostrarLoja: store.escopoRede }))),
       ),
     );
 

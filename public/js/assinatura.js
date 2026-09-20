@@ -46,7 +46,11 @@ export function criarAssinatura({ altura = 190, rotulo = 'Assine com o dedo na �
 
   function iniciar(evento) {
     evento.preventDefault();
-    canvas.setPointerCapture?.(evento.pointerId);
+    try {
+      canvas.setPointerCapture?.(evento.pointerId);
+    } catch {
+      /* ponteiro sintético (testes) não pode ser capturado */
+    }
     desenhando = true;
     ultimo = posicao(evento);
   }

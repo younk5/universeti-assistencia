@@ -68,7 +68,7 @@ export function montarLayout(rota) {
         'div',
         { style: { minWidth: '0' } },
         h('div.sidebar__nome', {}, 'UniverseTI Assistência'),
-        h('div.sidebar__sub', {}, store.ehAdmin ? 'Todas as lojas' : (usuario?.lojaNome ?? 'Sem loja')),
+        h('div.sidebar__sub', {}, store.escopoRede ? 'Rede · todas as lojas' : (usuario?.lojaNome ?? 'Sem loja')),
       ),
     ),
     h(
@@ -125,7 +125,7 @@ export function montarLayout(rota) {
         h(
           'div.topbar__loja',
           {},
-          store.ehAdmin ? 'Administrador · todas as lojas' : (usuario?.lojaNome ?? 'Sem loja vinculada'),
+          store.escopoRede ? (store.ehAdmin ? 'Administrador · todas as lojas' : 'Técnico · todas as lojas') : (usuario?.lojaNome ?? 'Sem loja vinculada'),
         ),
       ),
     ),
@@ -184,7 +184,7 @@ export function montarLayout(rota) {
 
   montar(raiz, h('div', { style: { display: 'contents' } }, sidebar), topbar, containerConteudo, bottomnav);
 
-  if (store.ehAdmin === false && !usuario?.lojaId) {
+  if (usuario?.papel === 'atendente' && !usuario?.lojaId) {
     containerConteudo.append(
       h(
         'div.faixa-aviso',

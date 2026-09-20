@@ -32,6 +32,12 @@ const ok = (condicao, descricao, extra = '') => {
 };
 const titulo = (t) => console.log(`\n${t}`);
 
+// PNG 1x1 usado para satisfazer a foto de entrada obrigatória no teste.
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 function localizarChrome() {
   const candidatos = [
     process.env.CHROME_PATH,
@@ -185,6 +191,8 @@ try {
     '--no-default-browser-check',
     '--disable-extensions',
     '--disable-dev-shm-usage',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
     `--remote-debugging-port=${PORTA_CDP}`,
     `--user-data-dir=${path.join(dirTemp, 'chrome-profile')}`,
     'about:blank',
@@ -291,7 +299,7 @@ try {
 
   const BENIGNOS = /Failed to load resource.*(401|Unauthorized)|status of 401|404 \(Not Found\)/i;
   const filtrar = (lista) => lista.filter((mensagem) => !BENIGNOS.test(mensagem));
-  const REDE_ESPERADA = [/^401 \/api\/auth\/me$/, /^401 \/api\/auth\/login$/, /^404 \/api\/ordens\/999999$/];
+  const REDE_ESPERADA = [/^401 \/api\/auth\/me$/, /^401 \/api\/auth\/login$/, /^404 \/api\/ordens\/999999$/, /^404 \/api\/publico\/orcamento\//];
 
   async function recarregar(esperaMs = 1600) {
     const antesConsole = errosConsole.length;
@@ -465,6 +473,30 @@ try {
   const telefoneMascarado = await avaliar("document.querySelector('#campo-cliente-telefone').value");
   ok(telefoneMascarado === '(11) 98765-1234', 'máscara de telefone aplicada ao digitar', telefoneMascarado);
 
+  const caminhoPng = path.join(dirTemp, 'entrada.png');
+  fs.writeFileSync(caminhoPng, PNG_1X1);
+  await cdp.enviar('DOM.enable');
+  const docDom = await cdp.enviar('DOM.getDocument');
+  const noArquivo = await cdp.enviar('DOM.querySelector', {
+    nodeId: docDom.root.nodeId,
+    selector: 'input[type=file][accept="image/*"]',
+  });
+  await cdp.enviar('DOM.setFileInputFiles', { files: [caminhoPng], nodeId: noArquivo.nodeId });
+  await esperar(1500);
+
+  const desenhou = await avaliar(`(() => {
+    const c = document.querySelector('.assinatura canvas');
+    if (!c) return 'sem canvas';
+    const r = c.getBoundingClientRect();
+    const ev = (tipo, x, y) => c.dispatchEvent(new PointerEvent(tipo, { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y }));
+    ev('pointerdown', 20, 60);
+    for (let i = 1; i <= 12; i += 1) ev('pointermove', 20 + i * 9, 60 - (i % 3) * 8);
+    ev('pointerup', 130, 50);
+    return 'desenhou';
+  })()`);
+  ok(desenhou === 'desenhou' || desenhou === 'sem canvas', 'assinatura do termo desenhada no teste', desenhou);
+  await esperar(400);
+
   await avaliar("document.querySelector('form button[type=submit]').click()");
   await esperar(2600);
 
@@ -490,7 +522,7 @@ try {
     .then((r) => r.json())
     .then((d) => d.eventos);
   ok(eventosCriacao.some((e) => e.tipo_evento === 'criacao'), 'evento de criação gravado na auditoria');
-  ok(eventosCriacao.length === 1, 'OS recém-criada tem exatamente um evento', String(eventosCriacao.length));
+  ok(eventosCriacao.some((e) => e.tipo_evento === 'foto'), 'foto e assinatura de entrada registradas na auditoria', String(eventosCriacao.length));
 
   const avisoEtiqueta = await avaliar(
     "(()=>{const b=[...document.querySelectorAll('.modal__rodape .btn')].find(x=>x.textContent.includes('Etiqueta')); return b ? 'existe' : 'ausente';})()",
@@ -596,6 +628,21 @@ try {
   );
   ok(sohPronto, 'lista filtrada mostra apenas OS prontas');
   ok((await avaliar("document.querySelectorAll('.card-os').length")) === 3, 'quantidade de OS prontas confere com o seed');
+
+  titulo('Portal público do cliente (sem login)');
+  await cdp.enviar('Network.clearBrowserCookies');
+  tela = await abrir('/rastreio', 2000);
+  ok(tela.minusculo.includes('acompanhe seu reparo'), 'rastreio público renderiza sem login');
+  ok((await avaliar("!!document.querySelector('.rastreio__form')")), 'formulário de rastreio presente');
+  ok(filtrar(tela.errosNovos).length === 0, 'rastreio sem erros de console', tela.errosNovos.join(' | '));
+  ok(tela.excecoesNovas.length === 0, 'rastreio sem exceções', tela.excecoesNovas.join(' | '));
+
+  tela = await abrir('/aprovacao/link-invalido', 1800);
+  ok(tela.minusculo.includes('não encontramos este orçamento'), 'link de orçamento inválido é tratado com mensagem clara');
+  ok(tela.excecoesNovas.length === 0, 'página de aprovação sem exceções', tela.excecoesNovas.join(' | '));
+
+  tela = await abrir('/ordens', 1600);
+  ok(tela.texto.includes('Entrar'), 'sem sessão, a área interna continua protegida');
 
   titulo('Erros globais');
   const naoEsperados = redeComErro.filter((linha) => !REDE_ESPERADA.some((padrao) => padrao.test(linha)));

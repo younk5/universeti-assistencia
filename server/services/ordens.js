@@ -2,6 +2,7 @@ import { consultar, consultarUm, executar, transacao, suspenderProtecaoAuditoria
 import { agoraISO } from '../utils.js';
 import { removerImagem } from '../storage.js';
 import { registrarExclusao } from './auditoria.js';
+import { escopoRede } from '../auth.js';
 import { ErroApp, naoEncontrado, invalido, conflito } from '../erros.js';
 
 export const STATUS = Object.freeze({
@@ -85,9 +86,9 @@ export async function criarOS(usuario, dados, lojaId, conexaoExterna = null) {
     const info = await conexao.run(
       `INSERT INTO ordens_servico (
           numero_os, loja_id, cliente_nome, cliente_telefone, tipo_aparelho, marca, modelo, cor, imei,
-          acessorios, defeito_relatado, estado_aparelho, status, valor, atendente_entrada_id,
+          acessorios, defeito_relatado, estado_aparelho, checklist, status, valor, atendente_entrada_id,
           criado_em, atualizado_em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         numero,
         lojaId,
@@ -101,6 +102,7 @@ export async function criarOS(usuario, dados, lojaId, conexaoExterna = null) {
         dados.acessorios ?? null,
         dados.defeitoRelatado,
         dados.estadoAparelho ?? null,
+        dados.checklist ?? null,
         STATUS.AGUARDANDO,
         dados.valorEstimado ?? null,
         dados.atendenteEntradaId ?? usuario.id,
@@ -123,12 +125,83 @@ export async function criarOS(usuario, dados, lojaId, conexaoExterna = null) {
   return transacao(executarCriacao);
 }
 
+/**
+ * Abre uma NOVA OS de retorno em garantia, vinculada à OS original retirada.
+ * O cliente não paga de novo pelo mesmo serviço dentro do prazo de garantia.
+ */
+export async function abrirGarantia(osOrigem, usuario, { descricao = null } = {}) {
+  if (osOrigem.status !== STATUS.RETIRADO) {
+    throw conflito('Só uma OS já retirada pelo cliente pode voltar em garantia.');
+  }
+  if (!osOrigem.garantia_ate) {
+    throw invalido('Esta OS não tem garantia registrada.');
+  }
+  if (new Date(osOrigem.garantia_ate).getTime() < Date.now()) {
+    throw conflito(`A garantia desta OS venceu em ${String(osOrigem.garantia_ate).slice(0, 10)}.`);
+  }
+  const jaAberta = await consultarUm(
+    `SELECT numero_os FROM ordens_servico
+      WHERE garantia_de_os_id = ? AND status NOT IN ('retirado', 'cancelado')
+      LIMIT 1`,
+    osOrigem.id,
+  );
+  if (jaAberta) {
+    throw conflito(`Já existe uma OS em garantia em aberto para esta origem (${jaAberta.numero_os}).`);
+  }
+
+  return transacao(async (conexao) => {
+    const numero = await gerarNumeroOS(conexao, osOrigem.loja_id);
+    const agora = agoraISO();
+    const info = await conexao.run(
+      `INSERT INTO ordens_servico (
+          numero_os, loja_id, cliente_nome, cliente_telefone, tipo_aparelho, marca, modelo, cor, imei,
+          acessorios, defeito_relatado, estado_aparelho, status, valor, atendente_entrada_id,
+          garantia_de_os_id, criado_em, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
+      [
+        numero,
+        osOrigem.loja_id,
+        osOrigem.cliente_nome,
+        osOrigem.cliente_telefone,
+        osOrigem.tipo_aparelho,
+        osOrigem.marca,
+        osOrigem.modelo,
+        osOrigem.cor ?? null,
+        osOrigem.imei ?? null,
+        osOrigem.acessorios ?? null,
+        `Retorno em garantia (OS ${osOrigem.numero_os})${descricao ? `: ${descricao}` : ''}`,
+        osOrigem.estado_aparelho ?? null,
+        STATUS.AGUARDANDO,
+        usuario.id,
+        osOrigem.id,
+        agora,
+        agora,
+      ],
+    );
+    const novoId = Number(info.lastInsertRowid);
+    await registrarEvento(conexao, {
+      osId: novoId,
+      tipoEvento: 'criacao',
+      statusNovo: STATUS.AGUARDANDO,
+      descricao: `Retorno em garantia da OS ${osOrigem.numero_os}`,
+      usuarioId: usuario.id,
+    });
+    await registrarEvento(conexao, {
+      osId: osOrigem.id,
+      tipoEvento: 'garantia',
+      descricao: `Aberta a OS ${numero} como retorno em garantia`,
+      usuarioId: usuario.id,
+    });
+    return novoId;
+  });
+}
+
 export async function buscarOS(osId, usuario, { conexao = null } = {}) {
   const os = conexao
     ? await conexao.get(`SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.id = ?`, [osId])
     : await consultarUm(`SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.id = ?`, osId);
   if (!os) throw naoEncontrado('Ordem de serviço não encontrada.');
-  if (usuario.papel !== 'admin' && Number(os.loja_id) !== Number(usuario.lojaId)) {
+  if (!escopoRede(usuario) && Number(os.loja_id) !== Number(usuario.lojaId)) {
     throw new ErroApp('Esta OS pertence a outra loja.', { status: 403, codigo: 'loja_restrita' });
   }
   return os;
@@ -140,7 +213,7 @@ export async function buscarOSPorNumero(numeroOS, usuario) {
     String(numeroOS).toUpperCase(),
   );
   if (!os) throw naoEncontrado('Ordem de serviço não encontrada.');
-  if (usuario.papel !== 'admin' && Number(os.loja_id) !== Number(usuario.lojaId)) {
+  if (!escopoRede(usuario) && Number(os.loja_id) !== Number(usuario.lojaId)) {
     throw new ErroApp('Esta OS pertence a outra loja.', { status: 403, codigo: 'loja_restrita' });
   }
   return os;
@@ -198,7 +271,7 @@ export async function alterarStatus(osId, usuario, novoStatus, { descricao = nul
   return transacao(async (conexao) => {
     const os = await conexao.get('SELECT * FROM ordens_servico WHERE id = ?', [osId]);
     if (!os) throw naoEncontrado('Ordem de serviço não encontrada.');
-    if (usuario.papel !== 'admin' && Number(os.loja_id) !== Number(usuario.lojaId)) {
+    if (!escopoRede(usuario) && Number(os.loja_id) !== Number(usuario.lojaId)) {
       throw new ErroApp('Esta OS pertence a outra loja.', { status: 403, codigo: 'loja_restrita' });
     }
     validarTransicao(os, novoStatus);
@@ -254,7 +327,7 @@ export function montarFiltros({ usuario, lojaId, status, tecnicoId, busca, de, a
   const where = [];
   const params = [];
 
-  if (usuario.papel === 'admin') {
+  if (escopoRede(usuario)) {
     if (lojaId) {
       where.push('o.loja_id = ?');
       params.push(Number(lojaId));

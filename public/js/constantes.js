@@ -44,6 +44,10 @@ export const ROTULOS_TIPO_EVENTO = Object.freeze({
   foto: 'Foto anexada',
   edicao: 'Dados atualizados',
   reabertura: 'OS reaberta',
+  orcamento: 'Orçamento enviado',
+  orcamento_aprovado: 'Orçamento aprovado',
+  orcamento_recusado: 'Orçamento recusado',
+  garantia: 'Retorno em garantia',
 });
 
 export const ETAPAS_FLUXO = [

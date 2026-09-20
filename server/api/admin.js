@@ -8,11 +8,12 @@ import {
   listarTecnicos,
   excluirUsuario,
 } from '../services/usuarios.js';
-import { exigirTexto, exigirLogin, exigirTelefone, exigirEnum } from '../utils.js';
-import { exigirAutenticacao, exigirPermissao } from '../auth.js';
+import { exigirTexto, exigirLogin, exigirTelefone, exigirEnum, exigirNumero } from '../utils.js';
+import { exigirAutenticacao, exigirPermissao, escopoRede } from '../auth.js';
 import { semPermissao, invalido } from '../erros.js';
 import { listarExclusoes, registrarExclusao } from '../services/auditoria.js';
 import { exportarBanco, importarBanco } from '../services/backup.js';
+import { listarConfiguracoes, definirConfig, CHAVES } from '../services/configuracoes.js';
 
 const PAPEIS = ['atendente', 'tecnico', 'admin'];
 
@@ -41,13 +42,30 @@ function patchLoja(corpo) {
 }
 
 export function registrar(rota) {
+  /* ---------------------------- Configurações ---------------------------- */
+  rota.get('/api/admin/configuracoes', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    return { configuracoes: await listarConfiguracoes() };
+  });
+
+  rota.patch('/api/admin/configuracoes', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    const comissao = exigirNumero(ctx.corpo.comissaoPercentual, 'comissão (%)', { min: 0, max: 100 });
+    const garantia = exigirNumero(ctx.corpo.garantiaDiasPadrao, 'garantia padrão (dias)', { min: 0, max: 3650 });
+    const prazo = exigirNumero(ctx.corpo.prazoDiasPadrao, 'prazo padrão (dias)', { min: 0, max: 365 });
+    if (comissao !== null) await definirConfig(CHAVES.COMISSAO_PERCENTUAL, comissao);
+    if (garantia !== null) await definirConfig(CHAVES.GARANTIA_DIAS, garantia);
+    if (prazo !== null) await definirConfig(CHAVES.PRAZO_DIAS, prazo);
+    return { configuracoes: await listarConfiguracoes(), mensagem: 'Configurações salvas.' };
+  });
+
   /* --------------------------------- Lojas ------------------------------- */
   rota.get('/api/lojas', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
     const lojas = await listarLojas({ apenasAtivas: ctx.query.ativas === '1' });
     return {
-      lojas: ctx.usuario.papel === 'admin' ? lojas : lojas.filter((l) => l.id === ctx.usuario.lojaId),
-      tecnicos: await listarTecnicos(ctx.usuario.papel === 'admin' ? null : ctx.usuario.lojaId),
+      lojas: escopoRede(ctx.usuario) ? lojas : lojas.filter((l) => l.id === ctx.usuario.lojaId),
+      tecnicos: await listarTecnicos(escopoRede(ctx.usuario) ? null : ctx.usuario.lojaId),
     };
   });
 

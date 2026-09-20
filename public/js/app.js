@@ -7,6 +7,8 @@ import { icone } from './icons.js';
 import { h, montar } from './dom.js';
 
 import { montarLogin } from './pages/login.js';
+import { montarRastreio } from './pages/rastreio.js';
+import { montarAprovacao } from './pages/aprovacao.js';
 import { paginaDashboard } from './pages/painel.js';
 import { paginaNovaOS } from './pages/nova-os.js';
 import { paginaFila } from './pages/fila.js';
@@ -17,6 +19,9 @@ import { abrirPerfil } from './pages/perfil.js';
 
 const ROTAS = [
   { padrao: '/login', montar: () => montarLogin(), publica: true },
+  { padrao: '/rastreio', montar: (c, p) => montarRastreio(p), publica: true },
+  { padrao: '/rastreio/:numero', montar: (c, p) => montarRastreio(p), publica: true },
+  { padrao: '/aprovacao/:token', montar: (c, p) => montarAprovacao(p), publica: true },
   { padrao: '/painel', montar: (c) => paginaDashboard(c), permissao: 'os.ver' },
   { padrao: '/nova', montar: (c) => paginaNovaOS(c), permissao: 'os.criar' },
   { padrao: '/fila', montar: (c) => paginaFila(c), permissao: 'os.ver' },
@@ -66,15 +71,17 @@ async function renderizar() {
       return;
     }
 
-    if (alvo.rota.publica && store.usuario) {
-      irPara('/painel');
-      return;
-    }
-
     if (alvo.rota.publica) {
+      // Páginas públicas (login, rastreio, aprovação de orçamento) montam a
+      // própria tela e não usam o layout interno. Só o login redireciona quem
+      // já está logado; rastreio/aprovação continuam acessíveis.
+      if (alvo.rota.padrao === '/login' && store.usuario) {
+        irPara('/painel');
+        return;
+      }
       rotaAtual = alvo.caminho;
-      document.title = 'Entrar · UniverseTI Assistência';
-      await alvo.rota.montar();
+      document.title = tituloPublico(alvo.rota.padrao);
+      await alvo.rota.montar(null, alvo.params);
       return;
     }
 
@@ -143,6 +150,12 @@ function titulo(caminho) {
     '/admin': 'Gestão',
   };
   return nomes[caminho] ?? 'UniverseTI Assistência';
+}
+
+function tituloPublico(padrao) {
+  if (String(padrao).startsWith('/rastreio')) return 'Acompanhar minha OS · UniverseTI Assistência';
+  if (String(padrao).startsWith('/aprovacao')) return 'Aprovar orçamento · UniverseTI Assistência';
+  return 'Entrar · UniverseTI Assistência';
 }
 
 function mostrarSemPermissao(padrao) {

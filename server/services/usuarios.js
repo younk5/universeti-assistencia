@@ -43,8 +43,8 @@ export async function buscarUsuario(id) {
 
 export async function criarUsuario({ nome, email, senha, papel, lojaId, telefone }) {
   if (!PAPEIS.includes(papel)) throw invalido(`Papel inválido. Opções: ${PAPEIS.join(', ')}.`, { campo: 'papel' });
-  if (papel !== 'admin' && !lojaId) {
-    throw invalido('Atendentes e técnicos precisam estar vinculados a uma loja.', { campo: 'lojaId' });
+  if (papel === 'atendente' && !lojaId) {
+    throw invalido('O atendente precisa estar vinculado a uma loja.', { campo: 'lojaId' });
   }
   if (lojaId && !(await consultarUm('SELECT id FROM lojas WHERE id = ?', lojaId))) {
     throw invalido('A loja informada não existe.', { campo: 'lojaId' });
@@ -60,7 +60,7 @@ export async function criarUsuario({ nome, email, senha, papel, lojaId, telefone
     email.toLowerCase(),
     gerarHashSenha(senha),
     papel,
-    papel === 'admin' ? lojaId ?? null : lojaId,
+    lojaId ?? null,
     telefone ?? null,
     agoraISO(),
   );
@@ -73,9 +73,9 @@ export async function atualizarUsuario(id, { nome, email, papel, lojaId, telefon
 
   const papelFinal = papel ?? atual.papel;
   if (!PAPEIS.includes(papelFinal)) throw invalido(`Papel inválido. Opções: ${PAPEIS.join(', ')}.`, { campo: 'papel' });
-  const lojaFinal = papelFinal === 'admin' ? lojaId ?? null : lojaId ?? atual.loja_id;
-  if (papelFinal !== 'admin' && !lojaFinal) {
-    throw invalido('Atendentes e técnicos precisam estar vinculados a uma loja.', { campo: 'lojaId' });
+  const lojaFinal = papelFinal === 'atendente' ? lojaId ?? atual.loja_id : lojaId ?? null;
+  if (papelFinal === 'atendente' && !lojaFinal) {
+    throw invalido('O atendente precisa estar vinculado a uma loja.', { campo: 'lojaId' });
   }
   if (email && email.toLowerCase() !== atual.email) {
     if (await consultarUm('SELECT id FROM usuarios WHERE email = ? COLLATE NOCASE AND id <> ?', email, id)) {

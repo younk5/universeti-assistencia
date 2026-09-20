@@ -40,6 +40,14 @@ export const store = {
     return estado.usuario?.papel === 'admin';
   },
 
+  /**
+   * Visão de rede: administrador e técnico enxergam todas as lojas; o
+   * atendente fica restrito à própria loja.
+   */
+  get escopoRede() {
+    return estado.usuario?.papel === 'admin' || estado.usuario?.papel === 'tecnico';
+  },
+
   definirSessao(usuario, permissoes) {
     estado.usuario = usuario;
     estado.permissoes = permissoes ?? [];

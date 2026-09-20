@@ -114,8 +114,10 @@ async function prepararUsuarios() {
       nome, email, senha, papel, lojaId, agora,
     );
   await inserir('Atendente A', 'atendente@teste.com', 'atendente', lojaA);
+  await inserir('Atendente B', 'atendente.b@teste.com', 'atendente', lojaB);
   await inserir('Tecnico A', 'tecnico@teste.com', 'tecnico', lojaA);
   await inserir('Tecnico B', 'tecnico.b@teste.com', 'tecnico', lojaB);
+  await inserir('Tecnico sem loja', 'tecnico.rede@teste.com', 'tecnico', null);
   return { lojaA, lojaB };
 }
 
@@ -153,12 +155,17 @@ try {
     imei: '356789012345678',
     defeitoRelatado: 'Tela trincada após queda',
     estadoAparelho: 'Tela trincada, aparelho liga',
+    checklist: { telaTrincada: true, queda: true, itensDeixados: 'capa e chip' },
   };
   r = await api('POST', '/api/ordens', payload);
   ok(r.status === 201, 'atendente cria OS (201)', JSON.stringify(r.dados).slice(0, 200));
   const osId = r.dados.ordem?.id;
   const numeroOS = r.dados.ordem?.numero_os;
   ok(Boolean(numeroOS && numeroOS.startsWith('TST-')), `número de OS gerado: ${numeroOS}`);
+  ok(
+    Boolean(r.dados.ordem?.checklist && JSON.parse(r.dados.ordem.checklist).telaTrincada === true),
+    'checklist técnico é gravado na OS',
+  );
 
   r = await api('POST', '/api/ordens', { ...payload, clienteTelefone: '123' });
   ok(r.status === 422, 'telefone inválido é rejeitado (422)', `status=${r.status}`);
@@ -207,14 +214,35 @@ try {
   ok(Number(r.dados.ordem.valor) === 480.5, 'valor cobrado gravado');
   ok(Boolean(r.dados.whatsapp), 'link de WhatsApp montado para avisar o cliente');
 
+  titulo('Orçamento com aprovação do cliente');
+  r = await api('POST', `/api/ordens/${osId}/orcamento`, { valor: 480.5, observacao: 'Troca de tela' });
+  ok(r.status === 200 && r.dados.orcamento?.status === 'pendente', 'orçamento enviado fica pendente', JSON.stringify(r.dados).slice(0, 160));
+  ok(typeof r.dados.link === 'string' && r.dados.link.includes('/aprovacao/'), 'link público de aprovação gerado');
+  const tokenOrc = String(r.dados.link ?? '').split('/').pop();
+
+  r = await api('GET', `/api/publico/orcamento/${tokenOrc}`, null, { cookie: false });
+  ok(r.status === 200 && Number(r.dados.orcamento?.valor) === 480.5, 'orçamento é acessível sem login');
+
+  r = await api('POST', `/api/publico/orcamento/${tokenOrc}`, { decisao: 'aprovado' }, { cookie: false });
+  ok(r.status === 200, 'cliente aprova o orçamento sem login', JSON.stringify(r.dados).slice(0, 120));
+
+  r = await api('POST', `/api/publico/orcamento/${tokenOrc}`, { decisao: 'recusado' }, { cookie: false });
+  ok(r.status === 409, 'responder o mesmo orçamento duas vezes é bloqueado (409)', `status=${r.status}`);
+
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.orcamento?.status === 'aprovado', 'decisão do cliente aparece na OS');
+  ok(r.dados.eventos.some((e) => e.tipo_evento === 'orcamento_aprovado'), 'aprovação entra na trilha de auditoria');
+
   r = await api('POST', `/api/ordens/${osId}/retirar`, { recebidoPor: 'Cliente Smoke Test' });
   ok(r.status === 403, 'técnico não pode registrar retirada (403)', `status=${r.status}`);
 
   titulo('Retirada (atendente) e auditoria');
   await api('POST', '/api/auth/login', { email: 'atendente@teste.com', senha: 'Teste@123' });
-  r = await api('POST', `/api/ordens/${osId}/retirar`, { recebidoPor: 'Cliente Smoke Test', valorPago: true });
+  r = await api('POST', `/api/ordens/${osId}/retirar`, { recebidoPor: 'Cliente Smoke Test', valorPago: true, formaPagamento: 'pix' });
   ok(r.status === 200 && r.dados.ordem.status === 'retirado', 'atendente registra a retirada');
   ok(Boolean(r.dados.ordem.retirado_em), 'data de retirada gravada');
+  ok(r.dados.ordem.forma_pagamento === 'pix', 'forma de pagamento gravada');
+  ok(Boolean(r.dados.ordem.garantia_ate), 'data-limite de garantia calculada na retirada');
 
   r = await api('GET', `/api/ordens/${osId}`);
   const tipos = r.dados.eventos.map((e) => e.tipo_evento);
@@ -230,6 +258,31 @@ try {
   r = await api('GET', `/api/ordens/${osId}`);
   r = await api('POST', `/api/ordens/${osId}/retirar`, {});
   ok(r.status === 409, 'retirada duplicada é bloqueada (409)', `status=${r.status}`);
+
+  titulo('Rastreio público da OS');
+  r = await api('GET', `/api/publico/os/${numeroOS}?tel=5678`, null, { cookie: false });
+  ok(r.status === 200 && r.dados.ordem?.status === 'retirado', 'cliente acompanha a OS com número + telefone');
+  ok(r.dados.linhaDoTempo?.length >= 5, `linha do tempo pública traz ${r.dados.linhaDoTempo?.length ?? 0} passos`);
+
+  r = await api('GET', `/api/publico/os/${numeroOS}?tel=0000`, null, { cookie: false });
+  ok(r.status === 422, 'telefone errado não libera a OS (422)', `status=${r.status}`);
+
+  r = await api('GET', '/api/publico/os/NAO-EXISTE-999?tel=5678', null, { cookie: false });
+  ok(r.status === 422, 'mesma resposta para OS inexistente (evita varredura)');
+
+  titulo('Garantia como fluxo');
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.acoes?.podeGarantia === true, 'OS retirada dentro da garantia oferece a ação');
+  r = await api('POST', `/api/ordens/${osId}/garantia`, { descricao: 'voltou sem áudio' });
+  ok(
+    r.status === 201 && Number(r.dados.ordem?.garantia_de_os_id) === Number(osId),
+    'abre OS em garantia vinculada à original',
+    JSON.stringify(r.dados).slice(0, 160),
+  );
+  ok(r.dados.ordem?.status === 'aguardando' && r.dados.ordem?.valor == null, 'OS de garantia entra sem valor');
+  r = await api('POST', `/api/ordens/${osId}/garantia`, {});
+  ok(r.status === 409, 'não abre duas garantias abertas para a mesma OS (409)', `status=${r.status}`);
 
   const banco = await carregarDriver();
   void banco;
@@ -255,12 +308,24 @@ try {
   }
   ok(erroAuditoria, 'fotos_os é imutável (DELETE bloqueado por trigger)');
 
-  titulo('Isolamento entre lojas');
+  titulo('Escopo de visão (técnico/admin = rede; atendente = loja)');
   await api('POST', '/api/auth/login', { email: 'tecnico.b@teste.com', senha: 'Teste@123' });
   r = await api('GET', `/api/ordens/${osId}`);
-  ok(r.status === 403, 'técnico de outra loja não acessa a OS (403)', `status=${r.status}`);
+  ok(r.status === 200, 'técnico acessa OS de outra loja (visão de rede)', `status=${r.status}`);
   r = await api('GET', '/api/ordens');
-  ok(r.dados.itens.every((o) => o.loja_codigo === 'TSB'), 'listagem respeita o escopo da loja');
+  ok(r.dados.itens.some((o) => o.loja_codigo === 'TST'), 'técnico vê OS de loja diferente da dele');
+
+  await api('POST', '/api/auth/login', { email: 'tecnico.rede@teste.com', senha: 'Teste@123' });
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.status === 200, 'técnico sem loja também enxerga a rede', `status=${r.status}`);
+  r = await api('GET', '/api/meta');
+  ok(r.status === 200 && r.dados.lojas.length >= 2, 'técnico sem loja recebe a lista de lojas da rede');
+
+  await api('POST', '/api/auth/login', { email: 'atendente.b@teste.com', senha: 'Teste@123' });
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.status === 403, 'atendente de outra loja não acessa a OS (403)', `status=${r.status}`);
+  r = await api('GET', '/api/ordens');
+  ok(r.dados.itens.every((o) => o.loja_codigo === 'TSB'), 'listagem do atendente fica restrita à loja dele');
 
   titulo('Permissões administrativas');
   r = await api('GET', '/api/usuarios');
@@ -301,6 +366,22 @@ try {
   });
   ok(r.status === 409, 'e-mail duplicado é rejeitado (409)', `status=${r.status}`);
 
+  r = await api('POST', '/api/usuarios', {
+    nome: 'Técnico Rede',
+    email: 'tecnico.rede2@teste.com',
+    senha: 'Forte@123',
+    papel: 'tecnico',
+  });
+  ok(r.status === 201 && r.dados.usuario?.loja_id === null, 'técnico pode ser criado sem loja', `status=${r.status}`);
+
+  r = await api('POST', '/api/usuarios', {
+    nome: 'Atendente Sem Loja',
+    email: 'sem.loja@teste.com',
+    senha: 'Forte@123',
+    papel: 'atendente',
+  });
+  ok(r.status === 422, 'atendente sem loja é rejeitado (422)', `status=${r.status}`);
+
   r = await api('PATCH', '/api/usuarios/1', { ativo: false });
   ok(r.status === 200 || r.status === 422 || r.status === 404, 'PATCH de usuário responde de forma controlada', `status=${r.status}`);
 
@@ -311,6 +392,17 @@ try {
   ok(Array.isArray(r.dados.porLoja) && r.dados.porLoja.length >= 3, 'dashboard traz comparativo por loja');
   ok(Array.isArray(r.dados.produtividade), 'dashboard traz produtividade por técnico');
   ok(typeof r.dados.periodoResumo?.total === 'number', 'dashboard resume o período');
+  ok(typeof r.dados.financeiro?.faturamento === 'number', 'dashboard traz bloco financeiro');
+  ok(r.dados.financeiro.faturamento >= 480.5, 'faturamento inclui a OS retirada', `faturamento=${r.dados.financeiro.faturamento}`);
+  ok(typeof r.dados.financeiro.comissaoTotal === 'number', 'comissão estimada calculada');
+  ok(Array.isArray(r.dados.financeiro.porFormaPagamento), 'dashboard lista formas de pagamento');
+  ok(r.dados.produtividade.every((t) => 'comissao' in t), 'produtividade traz comissão por técnico');
+
+  titulo('Configurações da rede');
+  r = await api('PATCH', '/api/admin/configuracoes', { comissaoPercentual: 25, garantiaDiasPadrao: 120 });
+  ok(r.status === 200 && r.dados.configuracoes?.comissao_percentual === '25', 'admin salva regras da rede', JSON.stringify(r.dados).slice(0, 160));
+  r = await api('GET', '/api/admin/configuracoes');
+  ok(r.dados.configuracoes?.garantia_dias_padrao === '120', 'regra de garantia fica persistida');
 
   r = await api('GET', '/api/relatorios/ordens.csv');
   ok(r.status === 200 && String(r.dados).includes('numero_os'), 'exportação CSV gera conteúdo');
@@ -369,7 +461,16 @@ try {
   const tecnicoAlocavel = r.dados.usuario?.id;
   ok(r.status === 201, 'usuário vinculado à loja temporária');
 
-  await api('POST', '/api/auth/login', { email: 'novo.tecnico@teste.com', senha: 'Forte@123' });
+  r = await api('POST', '/api/usuarios', {
+    nome: 'Atendente Alocável',
+    email: 'alocavel.atendente@teste.com',
+    senha: 'Forte@123',
+    papel: 'atendente',
+    lojaId: lojaTemporaria,
+  });
+  ok(r.status === 201, 'atendente vinculado à loja temporária');
+
+  await api('POST', '/api/auth/login', { email: 'alocavel.atendente@teste.com', senha: 'Forte@123' });
   r = await api('GET', '/api/ordens');
   ok(r.dados.total === 0, 'loja nova começa sem ordens');
   ok(r.dados.itens.length === 0, 'listagem vazia é válida (não erro)');

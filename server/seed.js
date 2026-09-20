@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { config, caminhos } from './config.js';
-import { carregarDriver, prepararBanco, transacao, consultarUm, executar, fecharBanco, driverAtual } from './db.js';
+import { carregarDriver, prepararBanco, transacao, consultarUm, executar, fecharBanco, driverAtual, suspenderProtecaoAuditoria, restaurarProtecaoAuditoria } from './db.js';
 import { gerarHashSenha } from './auth.js';
 import { salvarImagem } from './storage.js';
 import { agoraISO } from './utils.js';
@@ -123,8 +123,15 @@ const sortear = (lista, indice) => lista[indice % lista.length];
 
 async function limparDados() {
   if (driverAtual() === 'turso') {
-    for (const tabela of ['eventos_os', 'fotos_os', 'ordens_servico', 'sessoes', 'usuarios', 'lojas']) {
-      await executar(`DELETE FROM ${tabela}`);
+    // Os triggers de imutabilidade impedem DELETE em eventos/fotos — inclusive
+    // no reset de demonstração. São suspensos e religados em volta da limpeza.
+    await suspenderProtecaoAuditoria();
+    try {
+      for (const tabela of ['eventos_os', 'fotos_os', 'ordens_servico', 'sessoes', 'usuarios', 'lojas']) {
+        await executar(`DELETE FROM ${tabela}`);
+      }
+    } finally {
+      await restaurarProtecaoAuditoria();
     }
     return;
   }
@@ -238,12 +245,38 @@ async function semear() {
         : null;
       const valor = ['pronto', 'retirado'].includes(cenario.status) ? 180 + (indice % 6) * 65 : null;
 
+      const checklist = JSON.stringify({
+        liga: indice % 5 !== 0,
+        telaTrincada: indice % 2 === 0,
+        carcacaAmassada: indice % 4 === 0,
+        oxidacao: indice % 7 === 0,
+        queda: indice % 3 === 0,
+        molhou: indice % 9 === 0,
+        senhaInformada: indice % 2 === 1,
+        backupAutorizado: indice % 3 !== 1,
+        itensDeixados: indice % 3 === 0 ? 'Carregador e capa' : undefined,
+        observacoes: indice % 5 === 0 ? 'Carcaça com riscos de uso; câmera sem trinca.' : undefined,
+      });
+
+      const temOrcamento = ['em_manutencao', 'pronto', 'retirado'].includes(cenario.status) && indice % 2 === 0;
+      const orcamentoPendente = cenario.status === 'aguardando' && indice % 3 === 0;
+      const orcamentoStatus = temOrcamento ? 'aprovado' : orcamentoPendente ? 'pendente' : 'sem_orcamento';
+      const orcamentoValor = temOrcamento || orcamentoPendente ? (valor ?? 220 + (indice % 5) * 70) : null;
+      const orcamentoToken = orcamentoPendente ? `demo-${indice}-${Math.random().toString(36).slice(2, 12)}` : null;
+      const orcamentoCriado = orcamentoValor ? iso(new Date(criado.getTime() + 6 * 3600 * 1000)) : null;
+      const formaPagamento = cenario.status === 'retirado' ? ['pix', 'dinheiro', 'credito', 'debito'][indice % 4] : null;
+      const garantiaDias = concluido ? 90 : null;
+      const garantiaAte = retiradoEm ? iso(new Date(retiradoEm.getTime() + 90 * 86400000)) : null;
+
       const info = await conexao.run(
         `INSERT INTO ordens_servico (
             numero_os, loja_id, cliente_nome, cliente_telefone, tipo_aparelho, marca, modelo, cor, imei,
-            acessorios, defeito_relatado, estado_aparelho, status, valor, valor_pago,
+            acessorios, defeito_relatado, estado_aparelho, checklist,
+            orcamento_valor, orcamento_status, orcamento_token, orcamento_criado_em,
+            forma_pagamento, garantia_dias, garantia_ate,
+            status, valor, valor_pago,
             atendente_entrada_id, tecnico_id, recebido_por, iniciado_em, concluido_em, retirado_em, criado_em, atualizado_em)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           numeroOS,
           lojaId,
@@ -257,6 +290,14 @@ async function semear() {
           indice % 3 === 0 ? 'Carregador e capa' : null,
           defeito,
           sortear(DEFEITOS_EXTRA, indice),
+          checklist,
+          orcamentoValor,
+          orcamentoStatus,
+          orcamentoToken,
+          orcamentoCriado,
+          formaPagamento,
+          garantiaDias,
+          garantiaAte,
           cenario.status,
           valor,
           cenario.status === 'retirado' ? 1 : 0,
@@ -272,6 +313,29 @@ async function semear() {
       );
 
       const osId = Number(info.lastInsertRowid);
+
+      if (orcamentoValor) {
+        await inserirEvento(
+          osId,
+          'orcamento',
+          null,
+          null,
+          `Orçamento de R$ ${orcamentoValor.toFixed(2)} enviado para aprovação do cliente`,
+          tecnico.id,
+          new Date(criado.getTime() + 6 * 3600 * 1000),
+        );
+        if (orcamentoStatus === 'aprovado') {
+          await inserirEvento(
+            osId,
+            'orcamento_aprovado',
+            null,
+            null,
+            'Cliente APROVOU o orçamento',
+            null,
+            new Date(criado.getTime() + 7 * 3600 * 1000),
+          );
+        }
+      }
 
       await inserirEvento(osId, 'criacao', null, 'aguardando', `Entrada registrada por ${atendente.nome}`, atendente.id, criado);
 

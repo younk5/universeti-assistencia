@@ -6,6 +6,8 @@ import { criarCaptura } from '../components/captura.js';
 import { abrirModal, ocupado, toastErro, toastSucesso, faixaErro, badgeStatus } from '../ui.js';
 import { baixarEtiquetaPdf } from '../etiqueta.js';
 import { telefone as formatarTelefone } from '../format.js';
+import { criarAssinatura } from '../assinatura.js';
+import { recortarAssinatura } from '../image.js';
 
 const RASCUNHO = 'tecnoflow.rascunho-os';
 
@@ -42,11 +44,35 @@ export function paginaNovaOS(container) {
     );
   }
 
+  /* ------------------------- Checklist técnico --------------------------- */
+  const ROTULOS_CHECKLIST = {
+    liga: 'Liga / dá sinal de vida',
+    telaTrincada: 'Tela trincada',
+    carcacaAmassada: 'Carcaça amassada',
+    oxidacao: 'Sinais de oxidação',
+    queda: 'Já sofreu queda',
+    molhou: 'Já molhou',
+    senhaInformada: 'Cliente informou a senha',
+    backupAutorizado: 'Autoriza backup dos dados',
+  };
+  const CHAVES_CHECKLIST = Object.keys(ROTULOS_CHECKLIST);
+
+  const checklist = {};
+  const itensChecklist = CHAVES_CHECKLIST.map((chave) => {
+    const input = h('input', { type: 'checkbox' });
+    checklist[chave] = input;
+    return h('label.checklist__item', {}, input, h('span', {}, ROTULOS_CHECKLIST[chave]));
+  });
+  campos.checklistItens = h('input.entrada', { type: 'text', placeholder: 'Ex: capinha, chip, cartão de memória' });
+  campos.checklistObs = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: traseira com risco profundo na câmera.' });
+
   const capturaEntrada = criarCaptura({
-    titulo: 'Foto do aparelho na entrada',
-    dica: 'Registre o estado em que o aparelho chegou. A imagem é otimizada antes do envio.',
+    titulo: 'Foto do aparelho na entrada (obrigatória)',
+    dica: 'Registre o estado em que o aparelho chegou. Sem esta foto não é possível registrar a OS.',
     legendaFoto: 'Estado do aparelho na entrada',
   });
+
+  const assinaturaEntrada = criarAssinatura({ rotulo: 'Peça para o cliente assinar o termo de entrada' });
 
   const areaErro = h('div.oculto');
   const botaoSalvar = h('button.btn.btn--primario.btn--grande', { type: 'submit' }, icone('check', { tamanho: 18 }), 'Registrar entrada');
@@ -171,10 +197,51 @@ export function paginaNovaOS(container) {
       h(
         'div.card__cabecalho',
         {},
+        h('h3', {}, 'Checklist técnico'),
+        h('span.texto-mini.texto-suave', {}, 'Marcas e avarias na entrada'),
+      ),
+      h(
+        'div.card__corpo.formulario',
+        {},
+        h('div.checklist', {}, itensChecklist),
+        h(
+          'div.formulario__linha.formulario__linha--2',
+          {},
+          h('div.campo', {}, h('label.campo__rotulo', {}, 'Itens deixados com o aparelho'), campos.checklistItens),
+          h('div.campo', {}, h('label.campo__rotulo', {}, 'Outras observações da vistoria'), campos.checklistObs),
+        ),
+      ),
+    ),
+    h(
+      'div.card',
+      {},
+      h(
+        'div.card__cabecalho',
+        {},
         h('h3', {}, 'Foto de entrada'),
         h('span.texto-mini.texto-suave', {}, 'Evidência do estado inicial'),
       ),
       h('div.card__corpo', {}, capturaEntrada.elemento),
+    ),
+    h(
+      'div.card',
+      {},
+      h(
+        'div.card__cabecalho',
+        {},
+        h('h3', {}, 'Termo de entrada'),
+        h('span.texto-mini.texto-suave', {}, 'Assinatura do cliente'),
+      ),
+      h(
+        'div.card__corpo.pilha',
+        {},
+        h(
+          'p.texto-pequeno.texto-suave',
+          {},
+          'O cliente declara que entrega o aparelho no estado registrado acima e autoriza o diagnóstico. Guarde este termo no comprovante.',
+        ),
+        assinaturaEntrada.elemento,
+      ),
     ),
     h(
       'div.grupo-botoes.grupo-botoes--bloco',
@@ -211,6 +278,18 @@ export function paginaNovaOS(container) {
 
   restaurarRascunho();
 
+  function montarChecklist() {
+    const saida = {};
+    for (const chave of CHAVES_CHECKLIST) {
+      if (checklist[chave].checked) saida[chave] = true;
+    }
+    const itens = campos.checklistItens.value.trim();
+    const obs = campos.checklistObs.value.trim();
+    if (itens) saida.itensDeixados = itens;
+    if (obs) saida.observacoes = obs;
+    return Object.keys(saida).length ? saida : null;
+  }
+
   async function salvar() {
     areaErro.classList.add('oculto');
     const nome = campos.clienteNome.value.trim();
@@ -223,6 +302,8 @@ export function paginaNovaOS(container) {
     if (!campos.marca.value.trim()) faltando.push('marca');
     if (!campos.modelo.value.trim()) faltando.push('modelo');
     if (defeito.length < 3) faltando.push('defeito relatado');
+    if (!capturaEntrada.temFoto()) faltando.push('foto de entrada');
+    if (assinaturaEntrada.estaVazio()) faltando.push('assinatura do cliente no termo');
 
     if (faltando.length) {
       mostrarErro(`Confira antes de salvar: informe ${faltando.join(', ')}.`);
@@ -241,6 +322,7 @@ export function paginaNovaOS(container) {
         acessorios: campos.acessorios.value.trim() || null,
         defeitoRelatado: defeito,
         estadoAparelho: campos.estadoAparelho.value.trim() || null,
+        checklist: montarChecklist(),
         valorEstimado: campos.valorEstimado.value.trim() ? Number(campos.valorEstimado.value.replace(',', '.')) : null,
         lojaId: campos.lojaId ? Number(campos.lojaId.value) : undefined,
       };
@@ -261,6 +343,20 @@ export function paginaNovaOS(container) {
           avisoFoto = erroFoto.message;
         }
         areaErro.classList.add('oculto');
+      }
+
+      // Termo assinado na entrada: vai como anexo do tipo assinatura.
+      if (!assinaturaEntrada.estaVazio()) {
+        try {
+          const blob = await recortarAssinatura(assinaturaEntrada.canvas);
+          if (blob) {
+            await api.enviarArquivo(`/api/ordens/${ordem.id}/fotos`, blob, {
+              params: { tipo: 'assinatura', legenda: 'Assinatura do cliente no termo de entrada' },
+            });
+          }
+        } catch (erroAssinatura) {
+          avisoFoto = avisoFoto ? `${avisoFoto}; ${erroAssinatura.message}` : erroAssinatura.message;
+        }
       }
 
       limparRascunho();
@@ -365,6 +461,9 @@ export function paginaNovaOS(container) {
           acessorios: campos.acessorios.value,
           defeitoRelatado: campos.defeitoRelatado.value,
           estadoAparelho: campos.estadoAparelho.value,
+          checklistItens: campos.checklistItens.value,
+          checklistObs: campos.checklistObs.value,
+          checklist: Object.fromEntries(CHAVES_CHECKLIST.map((c) => [c, checklist[c].checked])),
           valorEstimado: campos.valorEstimado.value,
         }),
       );
@@ -380,6 +479,11 @@ export function paginaNovaOS(container) {
       for (const [chave, valor] of Object.entries(salvo)) {
         if (campos[chave] && typeof valor === 'string') campos[chave].value = valor;
       }
+      if (salvo.checklist && typeof salvo.checklist === 'object') {
+        for (const chave of CHAVES_CHECKLIST) {
+          if (checklist[chave]) checklist[chave].checked = Boolean(salvo.checklist[chave]);
+        }
+      }
     } catch {
       /* rascunho inválido: ignora */
     }
@@ -394,9 +498,10 @@ export function paginaNovaOS(container) {
   }
 
   const aoPerderFoco = () => salvarRascunho();
-  for (const chave of ['clienteNome', 'clienteTelefone', 'marca', 'modelo', 'cor', 'imei', 'acessorios', 'defeitoRelatado', 'estadoAparelho', 'valorEstimado']) {
+  for (const chave of ['clienteNome', 'clienteTelefone', 'marca', 'modelo', 'cor', 'imei', 'acessorios', 'defeitoRelatado', 'estadoAparelho', 'valorEstimado', 'checklistItens', 'checklistObs']) {
     campos[chave].addEventListener('blur', aoPerderFoco);
   }
+  for (const chave of CHAVES_CHECKLIST) checklist[chave].addEventListener('change', aoPerderFoco);
 
   setTimeout(() => campos.clienteNome.focus(), 60);
 }

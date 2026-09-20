@@ -17,6 +17,7 @@ import { numero, data, dataHora, iniciais, iniciaisPapel, telefone as formatarTe
 const ABAS = [
   { id: 'lojas', rotulo: 'Lojas', icone: 'loja' },
   { id: 'usuarios', rotulo: 'Usuários', icone: 'usuarios' },
+  { id: 'config', rotulo: 'Regras', icone: 'engrenagem' },
   { id: 'auditoria', rotulo: 'Auditoria', icone: 'escudo' },
 ];
 
@@ -30,7 +31,7 @@ export async function paginaAdmin(container) {
   }
 
   let abaAtiva = 'lojas';
-  const estado = { lojas: [], usuarios: [], exclusoes: [], carregando: true, erro: null };
+  const estado = { lojas: [], usuarios: [], exclusoes: [], config: {}, carregando: true, erro: null };
 
   const areaAbas = h('div.abas', { role: 'tablist' });
   const areaConteudo = h('div', {}, esqueletoLista(2));
@@ -62,14 +63,16 @@ export async function paginaAdmin(container) {
     estado.erro = null;
     desenhar();
     try {
-      const [lojas, usuarios, exclusoes] = await Promise.all([
+      const [lojas, usuarios, exclusoes, config] = await Promise.all([
         api.get('/api/lojas'),
         api.get('/api/usuarios'),
         api.get('/api/admin/exclusoes', { limite: 100 }),
+        api.get('/api/admin/configuracoes'),
       ]);
       estado.lojas = lojas.lojas ?? [];
       estado.usuarios = usuarios.usuarios ?? [];
       estado.exclusoes = exclusoes.exclusoes ?? [];
+      estado.config = config.configuracoes ?? {};
       await store.carregarMeta();
     } catch (erro) {
       estado.erro = erro.message;
@@ -111,6 +114,7 @@ export async function paginaAdmin(container) {
 
     if (abaAtiva === 'lojas') montar(areaConteudo, renderLojas());
     else if (abaAtiva === 'usuarios') montar(areaConteudo, renderUsuarios());
+    else if (abaAtiva === 'config') montar(areaConteudo, renderConfig());
     else montar(areaConteudo, renderAuditoria());
   }
 
@@ -465,11 +469,11 @@ export async function paginaAdmin(container) {
     const loja = h(
       'select.selecao',
       {},
-      h('option', { value: '' }, 'Sem loja (somente admin)'),
+      h('option', { value: '' }, 'Sem loja'),
       ...estado.lojas.map((l) => h('option', { value: String(l.id), selected: String(usuario?.loja_id ?? '') === String(l.id) }, l.nome)),
     );
     const tel = h('input.entrada', { value: usuario?.telefone ?? '', placeholder: '(11) 91234-5678' });
-    const blocoLoja = h('div.campo', {}, h('label.campo__rotulo', {}, 'Loja vinculada *'), loja, h('span.campo__dica', {}, 'Atendentes e técnicos só enxergam a própria loja.'));
+    const blocoLoja = h('div.campo', {}, h('label.campo__rotulo', {}, 'Loja vinculada *'), loja, h('span.campo__dica', {}, 'Só o atendente precisa de loja. Técnico e admin enxergam a rede inteira.'));
     const blocoSenha = h(
       'div.campo',
       {},
@@ -479,8 +483,7 @@ export async function paginaAdmin(container) {
     );
 
     const sincronizar = () => {
-      const ehAdmin = papel.value === 'admin';
-      blocoLoja.classList.toggle('oculto', ehAdmin);
+      blocoLoja.classList.toggle('oculto', papel.value !== 'atendente');
     };
     papel.addEventListener('change', sincronizar);
     sincronizar();
@@ -502,7 +505,7 @@ export async function paginaAdmin(container) {
                 nome: nome.value.trim(),
                 email: email.value.trim(),
                 papel: papel.value,
-                lojaId: papel.value === 'admin' ? null : Number(loja.value),
+                lojaId: loja.value ? Number(loja.value) : null,
                 telefone: tel.value.trim() || null,
               };
               const resposta = await api.patch(`/api/usuarios/${usuario.id}`, corpo);
@@ -515,7 +518,7 @@ export async function paginaAdmin(container) {
                 email: email.value.trim(),
                 senha: senha.value,
                 papel: papel.value,
-                lojaId: papel.value === 'admin' ? null : Number(loja.value),
+                lojaId: loja.value ? Number(loja.value) : null,
                 telefone: tel.value.trim() || null,
               });
               modal.fechar();
@@ -637,6 +640,93 @@ export async function paginaAdmin(container) {
     } catch (erro) {
       toastErro(erro.message, { titulo: 'Não foi possível restaurar' });
     }
+  }
+
+  function renderConfig() {
+    const comissao = h('input.entrada', {
+      type: 'number',
+      min: '0',
+      max: '100',
+      inputMode: 'decimal',
+      value: String(estado.config.comissao_percentual ?? '30'),
+    });
+    const garantia = h('input.entrada', {
+      type: 'number',
+      min: '0',
+      max: '3650',
+      inputMode: 'numeric',
+      value: String(estado.config.garantia_dias_padrao ?? '90'),
+    });
+    const prazo = h('input.entrada', {
+      type: 'number',
+      min: '0',
+      max: '365',
+      inputMode: 'numeric',
+      value: String(estado.config.prazo_dias_padrao ?? '5'),
+    });
+    const botao = h('button.btn.btn--primario', { type: 'button' }, icone('check', { tamanho: 16 }), 'Salvar regras');
+
+    botao.addEventListener('click', async () => {
+      ocupado(botao, true, 'Salvando…');
+      try {
+        const resposta = await api.patch('/api/admin/configuracoes', {
+          comissaoPercentual: Number(comissao.value),
+          garantiaDiasPadrao: Number(garantia.value),
+          prazoDiasPadrao: Number(prazo.value),
+        });
+        estado.config = resposta.configuracoes ?? estado.config;
+        toastSucesso(resposta.mensagem ?? 'Regras salvas.', { titulo: 'Configurações' });
+      } catch (erro) {
+        toastErro(erro.message);
+      } finally {
+        ocupado(botao, false);
+      }
+    });
+
+    return h(
+      'div.pilha--grande.pilha',
+      {},
+      h(
+        'div.card',
+        {},
+        h(
+          'div.card__cabecalho',
+          {},
+          h('h3', {}, 'Regras de negócio'),
+          h('span.texto-mini.texto-suave', {}, 'Valem para toda a rede'),
+        ),
+        h(
+          'div.card__corpo.formulario',
+          {},
+          h(
+            'div.formulario__linha.formulario__linha--2',
+            {},
+            h(
+              'div.campo',
+              {},
+              h('label.campo__rotulo', {}, 'Comissão dos técnicos (%)'),
+              comissao,
+              h('span.campo__dica', {}, 'Percentual aplicado sobre o faturamento de cada técnico no painel financeiro.'),
+            ),
+            h(
+              'div.campo',
+              {},
+              h('label.campo__rotulo', {}, 'Garantia padrão (dias)'),
+              garantia,
+              h('span.campo__dica', {}, 'Sugerida ao concluir o serviço e usada no cálculo da garantia na retirada.'),
+            ),
+            h(
+              'div.campo',
+              {},
+              h('label.campo__rotulo', {}, 'Prazo de retirada (dias)'),
+              prazo,
+              h('span.campo__dica', {}, 'Previsão mostrada ao cliente no acompanhamento da OS.'),
+            ),
+          ),
+          h('div', {}, botao),
+        ),
+      ),
+    );
   }
 
   function renderAuditoria() {

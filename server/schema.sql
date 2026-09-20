@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
   telefone   TEXT,
   ativo      INTEGER NOT NULL DEFAULT 1,
   criado_em  TEXT    NOT NULL,
-  CHECK (papel = 'admin' OR loja_id IS NOT NULL)
+  -- Só o atendente é preso a uma loja. Técnico e administrador enxergam a
+  -- rede inteira e podem existir sem vínculo de loja.
+  CHECK (papel <> 'atendente' OR loja_id IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_usuarios_loja ON usuarios(loja_id);
@@ -57,8 +59,31 @@ CREATE TABLE IF NOT EXISTS ordens_servico (
   iniciado_em         TEXT,
   concluido_em        TEXT,
   retirado_em         TEXT,
+  -- Checklist técnico preenchido na entrada (JSON: riscos, acessórios, senha etc.)
+  checklist           TEXT,
+  -- Orçamento enviado ao cliente para aprovação (antes de executar o serviço)
+  orcamento_valor     REAL,
+  orcamento_status    TEXT    NOT NULL DEFAULT 'sem_orcamento'
+                      CHECK (orcamento_status IN ('sem_orcamento', 'pendente', 'aprovado', 'recusado')),
+  orcamento_obs       TEXT,
+  orcamento_token     TEXT,
+  orcamento_criado_em TEXT,
+  orcamento_decidido_em TEXT,
+  -- Financeiro e garantia na retirada
+  forma_pagamento     TEXT,
+  garantia_dias       INTEGER,
+  garantia_ate        TEXT,
+  -- Quando esta OS é um retorno em garantia, aponta para a OS original
+  garantia_de_os_id   INTEGER REFERENCES ordens_servico(id) ON DELETE SET NULL,
   criado_em           TEXT    NOT NULL,
   atualizado_em       TEXT    NOT NULL
+);
+
+-- Configurações simples da rede (chave/valor): percentual de comissão etc.
+CREATE TABLE IF NOT EXISTS configuracoes (
+  chave         TEXT PRIMARY KEY,
+  valor         TEXT NOT NULL,
+  atualizado_em TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_os_loja     ON ordens_servico(loja_id);

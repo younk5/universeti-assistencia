@@ -157,6 +157,14 @@ export function pode(usuario, permissao) {
   return (PERMISSOES[usuario.papel] ?? []).includes(permissao);
 }
 
+/**
+ * Escopo de visão: administrador e técnico enxergam a rede inteira;
+ * o atendente fica restrito à própria loja.
+ */
+export function escopoRede(usuario) {
+  return Boolean(usuario) && (usuario.papel === 'admin' || usuario.papel === 'tecnico');
+}
+
 export function exigirPermissao(usuario, permissao) {
   if (!usuario) throw naoAutenticado();
   if (!pode(usuario, permissao)) {

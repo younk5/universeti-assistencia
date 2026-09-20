@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Verificação estática do front-end
+        run: npm run check
+
+      - name: Teste de PDF
+        run: npm run test:pdf
+
+      - name: Testes de API
+        run: npm run test:api
+
+      - name: Testes de navegador (Chrome headless)
+        run: npm run test:ui
+        env:
+          CHROME_PATH: /usr/bin/google-chrome

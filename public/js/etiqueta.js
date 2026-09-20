@@ -2,9 +2,18 @@ import { criarDocumento, carregarImagem } from './documento.js';
 import { montarPdf, canvasParaJpeg, baixarPdf, mmParaPt } from './pdf.js';
 import { dataHora, telefone, moeda } from './format.js';
 import { ROTULOS_STATUS, ROTULOS_TIPO_FOTO, ROTULOS_TIPO_EVENTO } from './constantes.js';
+import { qrDataUrl } from './qr.js';
 
 const MARCA = 'UniverseTI Assistência';
 const MARCA_SUB = 'Assistência técnica de celulares';
+
+const ROTULOS_PAGAMENTO = {
+  dinheiro: 'Dinheiro',
+  pix: 'Pix',
+  credito: 'Cartão de crédito',
+  debito: 'Cartão de débito',
+  outro: 'Outro',
+};
 
 const ETIQUETA = { largura: 100, altura: 70 };
 
@@ -97,6 +106,15 @@ export async function baixarComprovantePdf(ordem, eventos = [], fotos = []) {
         }),
     ),
   );
+
+  let qrRastreio = null;
+  try {
+    const digitos = String(ordem.cliente_telefone ?? '').replace(/\D/g, '').slice(-4);
+    const linkRastreio = `${window.location.origin}/#/rastreio/${encodeURIComponent(ordem.numero_os)}?tel=${digitos}`;
+    qrRastreio = await carregarImagem(qrDataUrl(linkRastreio, { cellSize: 6, margin: 1 })).then((img) => ({ img, link: linkRastreio }));
+  } catch {
+    qrRastreio = null;
+  }
 
   const PAGINA = { largura: 210, altura: 297 };
   const M = 14;
@@ -243,6 +261,22 @@ export async function baixarComprovantePdf(ordem, eventos = [], fotos = []) {
     ['Loja', ordem.loja_nome],
   ]);
 
+  if (qrRastreio) {
+    secao('Acompanhe sua OS pelo celular');
+    const tam = 26;
+    garantir(tam + 6);
+    doc.imagemContida(qrRastreio.img, M, y, tam, tam, { fundo: '#ffffff' });
+    doc.texto(M + tam + 5, y + 2, 'Escaneie o QR para ver o status', { tamanho: 2.8, peso: 700 });
+    doc.texto(M + tam + 5, y + 6.4, 'do reparo sem precisar ligar na loja.', { tamanho: 2.5, cor: '#6b7186' });
+    doc.texto(M + tam + 5, y + 11, qrRastreio.link, {
+      tamanho: 2,
+      cor: '#9aa0b4',
+      largura: PAGINA.largura - M * 2 - tam - 5,
+      linhasMax: 3,
+    });
+    y += tam + 4;
+  }
+
   secao('Aparelho');
   campos([
     ['Tipo', ordem.tipo_aparelho ?? 'Celular'],
@@ -268,6 +302,9 @@ export async function baixarComprovantePdf(ordem, eventos = [], fotos = []) {
     ['Retirado em', ordem.retirado_em ? dataHora(ordem.retirado_em) : '—'],
     ['Valor', ordem.valor != null ? moeda(ordem.valor) : '—'],
     ['Pagamento', ordem.valor_pago ? 'Confirmado' : 'Pendente / não aplicável'],
+    ordem.forma_pagamento ? ['Forma de pagamento', ROTULOS_PAGAMENTO[ordem.forma_pagamento] ?? ordem.forma_pagamento] : null,
+    ordem.garantia_ate ? ['Garantia até', dataHora(ordem.garantia_ate).slice(0, 10)] : null,
+    ordem.orcamento_valor != null ? ['Orçamento aprovado', moeda(ordem.orcamento_valor)] : null,
   ]);
 
   if (eventos.length) {
