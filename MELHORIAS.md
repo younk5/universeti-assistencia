@@ -1,5 +1,10 @@
 # Versão de teste — melhorias da UniverseTI Assistência
 
+> **Status:** todo este pacote já está **publicado em produção** em
+> https://assistenciauniverse.vercel.app (com backup do banco feito antes do
+> deploy — veja o fim deste arquivo).
+
+
 Esta pasta (`teste-universeti-v2`) é uma cópia separada do sistema que está
 online. Nada aqui afeta a versão publicada. Rode localmente, teste à vontade e,
 quando estiver satisfeito, é só levar os arquivos para o repositório oficial.
@@ -86,6 +91,65 @@ Turso e o storage em Blob já existem no projeto.
 
 As rotas públicas (`#/rastreio/...` e `#/aprovacao/...`) funcionam mesmo com o
 usuário logado — só a tela de login redireciona quem já está autenticado.
+
+---
+
+## Pacote final aplicado (e já em produção)
+
+### Escopo de acesso
+- **Administrador e técnico enxergam a rede inteira** (todas as lojas). **Só o
+  atendente** fica restrito à própria loja.
+- **Técnico pode ser criado sem loja** (o campo some no cadastro).
+- Migração automática relaxa o vínculo de loja em `usuarios` sem perder dados.
+
+### Garantia como fluxo
+- Na OS retirada, dentro do prazo, aparece **“Abrir OS em garantia”**: cria uma
+  nova OS vinculada à original (`garantia_de_os_id`), sem valor, já na fila.
+- Bloqueia abrir duas garantias abertas para a mesma origem.
+
+### Entrada com evidência
+- **Foto de entrada obrigatória** e **termo assinado pelo cliente** no cadastro
+  da OS (a assinatura é anexada ao histórico como `assinatura`).
+
+### Cliente
+- Rastreio com **previsão de retirada**, **histórico**, **garantia** e
+  **comprovante em PDF** gerado para o próprio cliente (sem login).
+- Página de aprovação de orçamento com o **layout novo** (painel de marca +
+  cartão), aprovar/recusar com recado.
+- **Modo escuro** segue o tema do sistema (via `boot.js`).
+
+### Gestão
+- Painel com **financeiro** (faturamento, ticket, comissão, formas de pagamento),
+  **comparativo vs. período anterior** e **relatório em PDF**.
+- Gestão → **Regras**: comissão, garantia padrão e **prazo de retirada**.
+
+### Infra
+- **Backup automático diário**: Vercel Cron `GET /api/cron/backup` (protegido por
+  `CRON_SECRET`) exporta todas as tabelas para o Vercel Blob, em `backups/`.
+- **CI** em `.github/workflows/ci.yml` (estático + PDF + API + navegador).
+- **Previews com banco separado** (Turso `universeti-teste-preview` no ambiente
+  Preview).
+
+---
+
+## Produção
+
+- **Site:** https://assistenciauniverse.vercel.app
+- **Backup do banco antes do deploy:** `Default Project/backup-prod-2026-09-20.json`
+  (arquivo JSON com todas as tabelas — dá para restaurar em Gestão → Backup).
+- Dados preservados no deploy (lojas, usuários, OS, fotos e histórico conferidos).
+
+### Pendente: deploy automático via GitHub
+
+O repositório online (`younk5/universeti-assistencia`) ainda **não tem** estas
+mudanças — o commit já existe na pasta local. Para ativar o deploy automático:
+
+```bash
+cd "Default Project/teste-universeti-v2"
+git push origin master   # o GitHub vai pedir usuário/token
+vercel git connect       # conecta o projeto à Vercel (deploy a cada push)
+```
+
 
 ## Deploy de teste na Vercel
 
