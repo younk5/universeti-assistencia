@@ -63,7 +63,7 @@ export function montarLayout(rota) {
     h(
       'div.sidebar__marca',
       {},
-      h('div.sidebar__logo', {}, 'UT'),
+      h('div.sidebar__logo', {}, h('img', { src: '/img/icone.png', alt: 'UniverseTI' })),
       h(
         'div',
         { style: { minWidth: '0' } },

@@ -12,6 +12,7 @@
   --cor-marca-borda: #c7d2fe;
 
   --cor-fundo: #f5f6fa;
+  --veu: rgba(245, 246, 250, 0.94);
   --cor-fundo-alt: #eceef5;
   --cor-superficie: #ffffff;
   --cor-superficie-2: #fafbfd;
@@ -88,6 +89,7 @@
   --cor-marca-borda: #34377a;
 
   --cor-fundo: #0b1020;
+  --veu: rgba(11, 16, 32, 0.92);
   --cor-fundo-alt: #0e1428;
   --cor-superficie: #141a30;
   --cor-superficie-2: #18203a;
@@ -155,7 +157,12 @@ body {
   font-size: 15px;
   line-height: 1.5;
   color: var(--cor-texto);
-  background: var(--cor-fundo);
+  background-color: var(--cor-fundo);
+  background-image: linear-gradient(var(--veu), var(--veu)), url('/img/fundo.jpg');
+  background-size: auto, cover;
+  background-position: center, center;
+  background-attachment: scroll, fixed;
+  background-repeat: no-repeat, no-repeat;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
@@ -1746,7 +1753,12 @@ img { max-width: 100%; display: block; }
   min-height: 100dvh;
   display: grid;
   grid-template-columns: 1fr;
-  background: var(--cor-fundo);
+  background-color: var(--cor-fundo);
+  background-image: linear-gradient(var(--veu), var(--veu)), url('/img/fundo.jpg');
+  background-size: auto, cover;
+  background-position: center, center;
+  background-attachment: scroll, fixed;
+  background-repeat: no-repeat, no-repeat;
 }
 @media (min-width: 900px) {
   .login { grid-template-columns: 1.05fr 1fr; }
@@ -1873,10 +1885,16 @@ img { max-width: 100%; display: block; }
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background:
+  background-color: var(--cor-fundo);
+  background-image:
     radial-gradient(820px 420px at 118% -6%, var(--cor-roxo-fundo), transparent 62%),
     radial-gradient(680px 360px at -18% 6%, var(--cor-marca-suave), transparent 60%),
-    var(--cor-fundo);
+    linear-gradient(var(--veu), var(--veu)),
+    url('/img/fundo.jpg');
+  background-size: auto, auto, auto, cover;
+  background-position: center, center, center, center;
+  background-attachment: scroll, scroll, scroll, fixed;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
 }
 .publico__hero {
   position: relative;
@@ -2334,6 +2352,26 @@ img { max-width: 100%; display: block; }
 .financeiro__linha { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); font-size: 0.86rem; }
 .financeiro__linha span:first-child { color: var(--cor-texto-suave); }
 .financeiro__linha strong { font-weight: 620; }
+
+/* Ícone da marca (astronauta) */
+.boot-splash__logo img,
+.sidebar__logo img,
+.login__marca-logo img,
+.login__lateral-logo img,
+.publico__marca > span img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+.boot-splash__logo,
+.sidebar__logo,
+.login__marca-logo,
+.login__lateral-logo,
+.publico__marca > span {
+  overflow: hidden;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

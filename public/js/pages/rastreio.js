@@ -116,7 +116,7 @@ export function montarRastreio(params = {}) {
     h(
       'div.publico__marca',
       {},
-      h('span', {}, 'UT'),
+      h('span', {}, h('img', { src: '/img/icone.png', alt: 'UniverseTI' })),
       h('div', {}, h('strong', {}, 'UniverseTI Assistência'), h('small', {}, 'Assistência técnica de celulares')),
     ),
     h('h1.publico__hero-titulo', {}, 'Acompanhe seu reparo em tempo real'),

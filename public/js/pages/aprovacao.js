@@ -43,7 +43,7 @@ function casca(conteudo) {
       h(
         'div.publico__marca',
         {},
-        h('span', {}, 'UT'),
+        h('span', {}, h('img', { src: '/img/icone.png', alt: 'UniverseTI' })),
         h('div', {}, h('strong', {}, 'UniverseTI Assistência'), h('small', {}, 'Aprovação de orçamento')),
       ),
       h('h1.publico__hero-titulo', {}, 'Aprovar o orçamento do seu reparo'),

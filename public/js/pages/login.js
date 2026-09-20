@@ -173,7 +173,7 @@ export function montarLogin() {
         h(
           'div.login__lateral-topo',
           {},
-          h('div.login__lateral-logo', {}, 'UT'),
+          h('div.login__lateral-logo', {}, h('img', { src: '/img/icone.png', alt: 'UniverseTI' })),
           h('div', {}, h('div.texto-forte', {}, 'UniverseTI Assistência'), h('div.texto-mini', { style: { opacity: 0.8 } }, 'Assistência técnica de celulares')),
         ),
         h(
@@ -193,7 +193,7 @@ export function montarLogin() {
           h(
             'div.login__marca',
             {},
-            h('div.login__marca-logo', {}, 'UT'),
+            h('div.login__marca-logo', {}, h('img', { src: '/img/icone.png', alt: 'UniverseTI' })),
             h('div', {}, h('h1', { style: { fontSize: '1.3rem' } }, 'Entrar na UniverseTI Assistência'), h('p.texto-pequeno.texto-suave', {}, 'Acesso restrito à equipe')),
           ),
           formulario,
