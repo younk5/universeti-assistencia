@@ -8,6 +8,8 @@ import { baixarEtiquetaPdf } from '../etiqueta.js';
 import { telefone as formatarTelefone } from '../format.js';
 import { criarAssinatura } from '../assinatura.js';
 import { recortarAssinatura } from '../image.js';
+import { CHECKLIST_ITENS, ROTULOS_SENHA } from '../constantes.js';
+import { criarPadrao } from '../padrao.js';
 
 const RASCUNHO = 'tecnoflow.rascunho-os';
 
@@ -45,26 +47,45 @@ export function paginaNovaOS(container) {
   }
 
   /* ------------------------- Checklist técnico --------------------------- */
-  const ROTULOS_CHECKLIST = {
-    liga: 'Liga / dá sinal de vida',
-    telaTrincada: 'Tela trincada',
-    carcacaAmassada: 'Carcaça amassada',
-    oxidacao: 'Sinais de oxidação',
-    queda: 'Já sofreu queda',
-    molhou: 'Já molhou',
-    senhaInformada: 'Cliente informou a senha',
-    backupAutorizado: 'Autoriza backup dos dados',
-  };
-  const CHAVES_CHECKLIST = Object.keys(ROTULOS_CHECKLIST);
+  const CHAVES_CHECKLIST = CHECKLIST_ITENS.map((item) => item.chave);
 
   const checklist = {};
-  const itensChecklist = CHAVES_CHECKLIST.map((chave) => {
+  const itensChecklist = CHECKLIST_ITENS.map((item) => {
     const input = h('input', { type: 'checkbox' });
-    checklist[chave] = input;
-    return h('label.checklist__item', {}, input, h('span', {}, ROTULOS_CHECKLIST[chave]));
+    checklist[item.chave] = input;
+    return h('label.checklist__item', {}, input, h('span', {}, item.rotulo));
   });
   campos.checklistItens = h('input.entrada', { type: 'text', placeholder: 'Ex: capinha, chip, cartão de memória' });
   campos.checklistObs = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: traseira com risco profundo na câmera.' });
+
+  /* ------------------------ Senha do aparelho ---------------------------- */
+  const tipoSenha = h(
+    'select.selecao',
+    {},
+    ...Object.entries(ROTULOS_SENHA).map(([valor, rotulo]) => h('option', { value: valor }, rotulo)),
+  );
+  campos.senhaValor = h('input.entrada', { type: 'text', placeholder: 'Digite a senha informada pelo cliente', autocomplete: 'off', spellcheck: false });
+  const padrao = criarPadrao();
+  const blocoSenhaTexto = h('div.campo', {}, h('label.campo__rotulo', {}, 'Senha informada'), campos.senhaValor);
+  const blocoSenhaPadrao = h('div.campo', {}, h('label.campo__rotulo', {}, 'Desenho do padrão'), padrao.elemento);
+  const senhaBox = h(
+    'div.senha-box.pilha',
+    {},
+    h('div.campo', {}, h('label.campo__rotulo', {}, 'Tipo de senha'), tipoSenha),
+    blocoSenhaTexto,
+    blocoSenhaPadrao,
+  );
+  const valorSenha = () => (tipoSenha.value === 'padrao' ? padrao.valor() : campos.senhaValor.value.trim());
+  const sincronizarSenha = () => {
+    const visivel = checklist.senhaInformada.checked;
+    senhaBox.classList.toggle('oculto', !visivel);
+    const ehPadrao = tipoSenha.value === 'padrao';
+    blocoSenhaTexto.classList.toggle('oculto', ehPadrao);
+    blocoSenhaPadrao.classList.toggle('oculto', !ehPadrao);
+    if (visivel && ehPadrao) setTimeout(() => padrao.ajustar(), 30);
+  };
+  tipoSenha.addEventListener('change', sincronizarSenha);
+  checklist.senhaInformada.addEventListener('change', sincronizarSenha);
 
   const capturaEntrada = criarCaptura({
     titulo: 'Foto do aparelho na entrada (obrigatória)',
@@ -210,6 +231,7 @@ export function paginaNovaOS(container) {
           h('div.campo', {}, h('label.campo__rotulo', {}, 'Itens deixados com o aparelho'), campos.checklistItens),
           h('div.campo', {}, h('label.campo__rotulo', {}, 'Outras observações da vistoria'), campos.checklistObs),
         ),
+        senhaBox,
       ),
     ),
     h(
@@ -277,6 +299,7 @@ export function paginaNovaOS(container) {
   );
 
   restaurarRascunho();
+  sincronizarSenha();
 
   function montarChecklist() {
     const saida = {};
@@ -287,6 +310,10 @@ export function paginaNovaOS(container) {
     const obs = campos.checklistObs.value.trim();
     if (itens) saida.itensDeixados = itens;
     if (obs) saida.observacoes = obs;
+    if (checklist.senhaInformada.checked) {
+      const valor = valorSenha();
+      if (valor) saida.senha = { tipo: tipoSenha.value, valor };
+    }
     return Object.keys(saida).length ? saida : null;
   }
 
@@ -304,6 +331,7 @@ export function paginaNovaOS(container) {
     if (defeito.length < 3) faltando.push('defeito relatado');
     if (!capturaEntrada.temFoto()) faltando.push('foto de entrada');
     if (assinaturaEntrada.estaVazio()) faltando.push('assinatura do cliente no termo');
+    if (checklist.senhaInformada.checked && !valorSenha()) faltando.push('a senha do aparelho (marcou que o cliente informou)');
 
     if (faltando.length) {
       mostrarErro(`Confira antes de salvar: informe ${faltando.join(', ')}.`);

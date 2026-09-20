@@ -50,6 +50,34 @@ export const ROTULOS_TIPO_EVENTO = Object.freeze({
   garantia: 'Retorno em garantia',
 });
 
+export const CHECKLIST_ITENS = [
+  { chave: 'liga', rotulo: 'Liga / dá sinal de vida' },
+  { chave: 'telaTrincada', rotulo: 'Tela trincada' },
+  { chave: 'telaManchada', rotulo: 'Tela com manchas/linhas' },
+  { chave: 'carcacaAmassada', rotulo: 'Carcaça amassada' },
+  { chave: 'traseiraTrincada', rotulo: 'Traseira/tampa trincada' },
+  { chave: 'cameraDanificada', rotulo: 'Câmera danificada' },
+  { chave: 'conectorCargaDanificado', rotulo: 'Conector de carga danificado' },
+  { chave: 'botoesDanificados', rotulo: 'Botões danificados' },
+  { chave: 'altoFalanteDanificado', rotulo: 'Alto-falante danificado' },
+  { chave: 'bateriaInchada', rotulo: 'Bateria inchada' },
+  { chave: 'oxidacao', rotulo: 'Sinais de oxidação' },
+  { chave: 'queda', rotulo: 'Já sofreu queda' },
+  { chave: 'molhou', rotulo: 'Já molhou' },
+  { chave: 'aquecendo', rotulo: 'Esquenta ao carregar' },
+  { chave: 'riscosUso', rotulo: 'Riscos de uso' },
+  { chave: 'comConta', rotulo: 'Veio com conta (Google/iCloud) ativa' },
+  { chave: 'pelicula', rotulo: 'Com película aplicada' },
+  { chave: 'senhaInformada', rotulo: 'Cliente informou a senha' },
+  { chave: 'backupAutorizado', rotulo: 'Autoriza backup dos dados' },
+];
+
+export const ROTULOS_SENHA = {
+  numerica: 'Senha numérica (PIN)',
+  texto: 'Senha com letras',
+  padrao: 'Desenho (padrão)',
+};
+
 export const ETAPAS_FLUXO = [
   { status: 'aguardando', rotulo: 'Entrada', icone: 'caixa' },
   { status: 'em_manutencao', rotulo: 'Em bancada', icone: 'ferramenta' },

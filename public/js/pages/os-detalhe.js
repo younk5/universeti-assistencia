@@ -31,6 +31,8 @@ import {
   ROTULOS_TIPO_EVENTO,
   ROTULOS_STATUS,
   DESCRICAO_STATUS,
+  CHECKLIST_ITENS,
+  ROTULOS_SENHA,
 } from '../constantes.js';
 
 const ICONE_EVENTO = {
@@ -57,19 +59,17 @@ const ROTULOS_PAGAMENTO = {
   outro: 'Outro',
 };
 
-const ROTULOS_CHECKLIST_DETALHE = {
-  liga: 'Liga / dá sinal de vida',
-  telaTrincada: 'Tela trincada',
-  carcacaAmassada: 'Carcaça amassada',
-  oxidacao: 'Sinais de oxidação',
-  queda: 'Já sofreu queda',
-  molhou: 'Já molhou',
-  senhaInformada: 'Cliente informou a senha',
-  backupAutorizado: 'Autoriza backup dos dados',
-};
+const ROTULOS_CHECKLIST_DETALHE = Object.fromEntries(CHECKLIST_ITENS.map((item) => [item.chave, item.rotulo]));
 
 function ultimos4(telefone) {
   return String(telefone ?? '').replace(/\D/g, '').slice(-4);
+}
+
+function descreverSenha(senha) {
+  if (!senha || !senha.valor) return '—';
+  const rotulo = ROTULOS_SENHA[senha.tipo] ?? senha.tipo;
+  if (senha.tipo === 'padrao') return `${rotulo}: ${String(senha.valor).split('-').join(' → ')}`;
+  return `${rotulo}: ${senha.valor}`;
 }
 
 function linkRastreio(os) {
@@ -639,6 +639,14 @@ function cartaoChecklist(os) {
       'div.card__corpo.pilha--pequena.pilha',
       {},
       linhas.length ? h('div.checklist__resumo', {}, ...linhas) : null,
+      itens.senha
+        ? h(
+            'div',
+            {},
+            h('div.rotulo-flutuante', {}, 'Senha do aparelho'),
+            h('p.senha-visivel', {}, descreverSenha(itens.senha)),
+          )
+        : null,
       itens.itensDeixados ? h('div', {}, h('div.rotulo-flutuante', {}, 'Itens deixados'), h('p', {}, itens.itensDeixados)) : null,
       itens.observacoes ? h('div', {}, h('div.rotulo-flutuante', {}, 'Observações'), h('p', {}, itens.observacoes)) : null,
     ),

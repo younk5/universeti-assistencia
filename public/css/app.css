@@ -2304,6 +2304,26 @@ img { max-width: 100%; display: block; }
 .checklist__marcado { color: var(--cor-texto); }
 .checklist__nao { color: var(--cor-texto-fraco); text-decoration: line-through; }
 
+/* Senha do aparelho (checklist) */
+.senha-box {
+  padding: var(--esp-3);
+  border: 1px dashed var(--cor-borda-forte);
+  border-radius: var(--raio-sm);
+  background: var(--cor-superficie-2);
+}
+.padrao { display: grid; gap: var(--esp-2); justify-items: center; }
+.padrao canvas {
+  touch-action: none;
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-md);
+  cursor: crosshair;
+  max-width: 100%;
+}
+.padrao__legenda { font-size: 0.78rem; color: var(--cor-texto-suave); text-align: center; }
+.padrao__sequencia { font-family: var(--fonte-mono); font-size: 0.85rem; font-weight: 600; }
+.senha-visivel { font-family: var(--fonte-mono); font-weight: 600; }
+
 /* ------------------------------- Financeiro ----------------------------- */
 .financeiro { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-3); }
 @media (min-width: 720px) {

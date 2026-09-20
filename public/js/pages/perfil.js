@@ -7,6 +7,7 @@ import { iniciais, iniciaisPapel } from '../format.js';
 
 export function abrirPerfil({ aoFechar } = {}) {
   const usuario = store.usuario;
+  const podeTrocarSenha = usuario?.papel !== 'atendente';
   const botaoSalvar = h('button.btn.btn--primario', { type: 'submit' }, icone('check', { tamanho: 16 }), 'Salvar nova senha');
 
   const campoAtual = h('input.entrada', { type: 'password', autocomplete: 'current-password', required: true });
@@ -105,7 +106,18 @@ export function abrirPerfil({ aoFechar } = {}) {
       ),
     ),
     h('hr.divisor'),
-    formulario,
+    podeTrocarSenha
+      ? formulario
+      : h(
+          'div.faixa-aviso',
+          {},
+          icone('cadeado', { tamanho: 18 }),
+          h(
+            'span',
+            { style: { flex: '1' } },
+            'Seu perfil (atendente) não altera a própria senha. Peça ao administrador para redefini-la em Gestão → Usuários.',
+          ),
+        ),
     h('hr.divisor'),
     h(
       'button.btn.btn--perigo.btn--bloco',

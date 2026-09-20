@@ -43,10 +43,21 @@ export const TIPO_APARELHO = 'Celular';
 export const CHECKLIST_BOOLEANOS = [
   'liga',
   'telaTrincada',
+  'telaManchada',
   'carcacaAmassada',
+  'traseiraTrincada',
+  'cameraDanificada',
+  'conectorCargaDanificado',
+  'botoesDanificados',
+  'altoFalanteDanificado',
+  'bateriaInchada',
   'oxidacao',
   'queda',
   'molhou',
+  'aquecendo',
+  'riscosUso',
+  'comConta',
+  'pelicula',
   'senhaInformada',
   'backupAutorizado',
 ];
@@ -54,12 +65,30 @@ export const CHECKLIST_BOOLEANOS = [
 export const ROTULOS_CHECKLIST = {
   liga: 'Liga / dá sinal de vida',
   telaTrincada: 'Tela trincada',
+  telaManchada: 'Tela com manchas/linhas',
   carcacaAmassada: 'Carcaça amassada',
+  traseiraTrincada: 'Traseira/tampa trincada',
+  cameraDanificada: 'Câmera danificada',
+  conectorCargaDanificado: 'Conector de carga danificado',
+  botoesDanificados: 'Botões danificados',
+  altoFalanteDanificado: 'Alto-falante danificado',
+  bateriaInchada: 'Bateria inchada',
   oxidacao: 'Sinais de oxidação',
   queda: 'Já sofreu queda',
   molhou: 'Já molhou',
+  aquecendo: 'Esquenta ao carregar',
+  riscosUso: 'Riscos de uso',
+  comConta: 'Veio com conta (Google/iCloud) ativa',
+  pelicula: 'Com película aplicada',
   senhaInformada: 'Cliente informou a senha',
   backupAutorizado: 'Autoriza backup dos dados',
+};
+
+export const TIPOS_SENHA = ['numerica', 'texto', 'padrao'];
+export const ROTULOS_SENHA = {
+  numerica: 'Senha numérica (PIN)',
+  texto: 'Senha com letras',
+  padrao: 'Desenho (padrão)',
 };
 
 /**
@@ -89,6 +118,15 @@ export function normalizarChecklist(bruto) {
   const obs = exigirTexto(objeto.observacoes, 'observações do checklist', { max: 500, opcional: true });
   if (itens) saida.itensDeixados = itens;
   if (obs) saida.observacoes = obs;
+
+  // Senha do aparelho informada pelo cliente (numérica, texto ou desenho).
+  // No desenho, `valor` guarda a ORDEM dos pontos, ex.: "1-2-5-8".
+  const senhaBruta = objeto.senha;
+  if (senhaBruta && typeof senhaBruta === 'object' && !Array.isArray(senhaBruta)) {
+    const tipo = TIPOS_SENHA.includes(senhaBruta.tipo) ? senhaBruta.tipo : null;
+    const valor = exigirTexto(senhaBruta.valor, 'senha do aparelho', { max: 80, opcional: true });
+    if (tipo && valor) saida.senha = { tipo, valor };
+  }
 
   if (!Object.keys(saida).length) return null;
   const json = JSON.stringify(saida);

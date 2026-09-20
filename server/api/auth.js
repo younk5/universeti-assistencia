@@ -110,6 +110,12 @@ export function registrar(rota) {
 
   rota.post('/api/auth/senha', async (ctx) => {
     if (!ctx.usuario) throw naoAutenticado();
+    if (ctx.usuario.papel === 'atendente') {
+      throw new ErroApp('Atendentes não podem alterar a própria senha. Peça ao administrador para redefinir em Gestão → Usuários.', {
+        status: 403,
+        codigo: 'senha_restrita',
+      });
+    }
     const atual = exigirTexto(ctx.corpo.senhaAtual, 'senha atual', { max: 128 });
     const nova = validarForcaSenha(ctx.corpo.novaSenha);
     const registro = await consultarUm('SELECT senha_hash FROM usuarios WHERE id = ?', ctx.usuario.id);

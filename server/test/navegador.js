@@ -436,6 +436,29 @@ try {
     "!!document.querySelector('input[type=file][accept=\"image/*\"][capture=\"environment\"]')",
   );
   ok(temCamera, 'input de arquivo configurado para abrir a câmera traseira');
+
+  const itensChecklist = await avaliar("document.querySelectorAll('.checklist__item').length");
+  ok(itensChecklist >= 15, `checklist com ${itensChecklist} opções`);
+
+  const sequenciaPadrao = await avaliar(`(() => {
+    const item = [...document.querySelectorAll('.checklist__item')].find((l) => l.innerText.toLowerCase().includes('informou a senha'));
+    const chk = item.querySelector('input');
+    chk.click();
+    const sel = document.querySelector('.senha-box select');
+    sel.value = 'padrao';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const c = document.querySelector('.padrao canvas');
+    const r = c.getBoundingClientRect();
+    const ev = (t, fx, fy) => c.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: 2, pointerType: 'pen', isPrimary: true, clientX: r.left + r.width * fx, clientY: r.top + r.height * fy }));
+    ev('pointerdown', 0.15, 0.15);
+    ev('pointermove', 0.5, 0.15);
+    ev('pointermove', 0.85, 0.15);
+    ev('pointerup', 0.85, 0.15);
+    const texto = document.querySelector('.padrao__sequencia').textContent;
+    chk.click();
+    return texto;
+  })()`);
+  ok(/Ordem:\s*1\s*→\s*2\s*→\s*3/.test(sequenciaPadrao), 'desenho do padrão registra a ordem dos pontos', sequenciaPadrao);
   ok(tela.errosNovos.length === 0, 'nova OS sem erros de console', tela.errosNovos.join(' | '));
   ok(tela.excecoesNovas.length === 0, 'nova OS sem exceções', tela.excecoesNovas.join(' | '));
 

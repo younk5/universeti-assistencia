@@ -384,7 +384,12 @@ export async function paginaAdmin(container) {
                       'div.linha',
                       { style: { gap: '4px' } },
                       h('button.btn.btn--pequeno.btn--secundario', { type: 'button', onclick: () => modalUsuario(usuario) }, 'Editar'),
-                      h('button.btn.btn--pequeno.btn--fantasma', { type: 'button', onclick: () => modalSenha(usuario) }, 'Senha'),
+                      h(
+                        'button.btn.btn--pequeno.btn--fantasma',
+                        { type: 'button', onclick: () => modalSenha(usuario) },
+                        icone('cadeado', { tamanho: 14 }),
+                        'Redefinir senha',
+                      ),
                       usuario.id !== store.usuario.id
                         ? h(
                             'button.btn.btn--pequeno.btn--perigo',
@@ -553,8 +558,21 @@ export async function paginaAdmin(container) {
   }
 
   function modalSenha(usuario) {
-    const nova = h('input.entrada', { type: 'text', required: true, value: 'galaxy2026!' });
+    const nova = h('input.entrada', { type: 'text', required: true, value: gerarSenhaForte(), spellcheck: false, autocomplete: 'off' });
     const erro = h('div.oculto');
+    const botaoGerar = h('button.btn.btn--secundario.btn--pequeno', { type: 'button' }, icone('recarregar', { tamanho: 14 }), 'Gerar outra');
+    const botaoCopiar = h('button.btn.btn--fantasma.btn--pequeno', { type: 'button' }, icone('olho', { tamanho: 14 }), 'Copiar');
+    botaoGerar.addEventListener('click', () => {
+      nova.value = gerarSenhaForte();
+    });
+    botaoCopiar.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(nova.value);
+        toastSucesso('Senha copiada.', { titulo: 'Pronto' });
+      } catch {
+        nova.select?.();
+      }
+    });
     const botao = h('button.btn.btn--primario', { type: 'button', onclick: () => formulario.requestSubmit() }, icone('check', { tamanho: 16 }), 'Redefinir senha');
     const formulario = h(
       'form.pilha',
@@ -576,14 +594,26 @@ export async function paginaAdmin(container) {
         },
       },
       erro,
-      h('div.campo', {}, h('label.campo__rotulo', {}, 'Nova senha'), nova, h('span.campo__dica', {}, 'Informe esta senha ao usuário. As sessões abertas dele serão encerradas.')),
+      h('p.texto-pequeno.texto-suave', {}, `Nova senha de ${usuario.nome} (${iniciaisPapel(usuario.papel)}). As sessões abertas dele serão encerradas.`),
+      h('div.campo', {}, h('label.campo__rotulo', {}, 'Nova senha'), nova, h('span.campo__dica', {}, 'Anote e informe ao usuário — não é possível consultar depois.')),
+      h('div.grupo-botoes', {}, botaoGerar, botaoCopiar),
     );
     const modal = abrirModal({
       titulo: `Redefinir senha de ${usuario.nome}`,
+      descricao: 'Somente o administrador altera senhas',
       corpo: formulario,
       rodape: [h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'), botao],
     });
     return modal;
+  }
+
+  function gerarSenhaForte() {
+    const conjuntos = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#$%&*'];
+    const todos = conjuntos.join('');
+    const sortear = (fonte) => fonte[Math.floor(Math.random() * fonte.length)];
+    const base = conjuntos.map((c) => sortear(c));
+    while (base.length < 10) base.push(sortear(todos));
+    return base.sort(() => Math.random() - 0.5).join('');
   }
 
   /* ------------------------------ Auditoria ------------------------------ */

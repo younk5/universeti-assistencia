@@ -155,7 +155,7 @@ try {
     imei: '356789012345678',
     defeitoRelatado: 'Tela trincada após queda',
     estadoAparelho: 'Tela trincada, aparelho liga',
-    checklist: { telaTrincada: true, queda: true, itensDeixados: 'capa e chip' },
+    checklist: { telaTrincada: true, queda: true, itensDeixados: 'capa e chip', senhaInformada: true, senha: { tipo: 'padrao', valor: '1-2-5-8' } },
   };
   r = await api('POST', '/api/ordens', payload);
   ok(r.status === 201, 'atendente cria OS (201)', JSON.stringify(r.dados).slice(0, 200));
@@ -165,6 +165,10 @@ try {
   ok(
     Boolean(r.dados.ordem?.checklist && JSON.parse(r.dados.ordem.checklist).telaTrincada === true),
     'checklist técnico é gravado na OS',
+  );
+  ok(
+    Boolean(r.dados.ordem?.checklist && JSON.parse(r.dados.ordem.checklist).senha?.valor === '1-2-5-8'),
+    'senha do aparelho (desenho) é gravada com a ordem',
   );
 
   r = await api('POST', '/api/ordens', { ...payload, clienteTelefone: '123' });
@@ -546,6 +550,19 @@ try {
   ok(r.status === 404, 'rota de API inexistente responde 404 com JSON', `status=${r.status}`);
 
   titulo('Troca de senha');
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
+  const lojasParaSenha = await api('GET', '/api/lojas');
+  await api('POST', '/api/usuarios', {
+    nome: 'Atendente Senha',
+    email: 'atendente.senha@teste.com',
+    senha: 'Teste@123',
+    papel: 'atendente',
+    lojaId: lojasParaSenha.dados.lojas?.[0]?.id,
+  });
+  await api('POST', '/api/auth/login', { email: 'atendente.senha@teste.com', senha: 'Teste@123' });
+  r = await api('POST', '/api/auth/senha', { senhaAtual: 'Teste@123', novaSenha: 'Nova@123' });
+  ok(r.status === 403, 'atendente não pode alterar a própria senha (403)', `status=${r.status}`);
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'errada', novaSenha: 'Nova@123' });
   ok(r.status === 422, 'senha atual incorreta é rejeitada');
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'Teste@123', novaSenha: 'Nova@123' });
