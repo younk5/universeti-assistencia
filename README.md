@@ -97,19 +97,23 @@ desse grafo são recusadas pelo servidor — o histórico nunca fica incoerente.
 
 ## O que cada perfil enxerga
 
-| Recurso | Atendente | Técnico | Administrador |
-| --- | :---: | :---: | :---: |
-| Cadastrar entrada (nova OS) | ✅ | — | ✅ |
-| Ver OS da própria loja | ✅ | ✅ | ✅ (todas as lojas) |
-| Assumir aparelho na bancada | — | ✅ | ✅ |
-| Adicionar diagnóstico / anotação | ✅ | ✅ | ✅ |
-| Concluir serviço (foto + valor) | — | ✅ | ✅ |
-| Registrar retirada + assinatura | ✅ | — | ✅ |
-| Cancelar / reabrir / excluir OS | — | — | ✅ |
-| Excluir anexos (fotos/assinatura) | ✅ | ✅ | ✅ |
-| Painel comparativo entre lojas | própria loja | própria loja | rede inteira |
-| Exportar CSV | ✅ | ✅ | ✅ |
-| Gerenciar lojas e usuários (criar, editar, desativar, excluir) | — | — | ✅ |
+Técnico e administrador têm **exatamente as mesmas permissões** (acesso total à
+rede). O atendente fica restrito à própria loja.
+
+| Recurso | Atendente | Técnico / Administrador |
+| --- | :---: | :---: |
+| Cadastrar entrada (nova OS) | ✅ (própria loja) | ✅ (escolhe a loja) |
+| Ver OS | própria loja | todas as lojas |
+| Assumir aparelho na bancada | — | ✅ |
+| Adicionar diagnóstico / anotação | ✅ | ✅ |
+| Concluir serviço (foto + valor) | — | ✅ |
+| Registrar retirada + assinatura | ✅ | ✅ |
+| Cancelar / reabrir / excluir OS | — | ✅ |
+| Excluir anexos (fotos/assinatura) | ✅ | ✅ |
+| Painel | própria loja | rede inteira |
+| Exportar CSV | ✅ | ✅ |
+| Gestão: lojas, usuários, regras, auditoria, backup | — | ✅ |
+| Trocar a própria senha | — (pede à gestão) | ✅ |
 
 Regras aplicadas **no servidor** (não apenas escondendo botões na interface).
 
@@ -157,14 +161,14 @@ volta para trás.
 - **Exclusão definitiva** de lojas, usuários, ordens de serviço e anexos. Lojas e
   usuários podem ser excluídos mesmo com vínculos (o histórico antigo continua
   exibido, com o autor/loja como removido). Excluir uma OS apaga junto fotos,
-  assinatura e eventos — é irreversível e restrita ao administrador. A proteção
+  assinatura e eventos — é irreversível e restrita a administrador e técnico. A proteção
   dos registros de auditoria é suspensa apenas nessa operação e religada em
   seguida.
 - **Registro de exclusões**: cada exclusão administrativa (OS, anexo, loja,
   usuário) grava quem apagou, o quê e quando em `exclusoes_log` — visível em
   Gestão → Auditoria. Não guarda o conteúdo apagado, apenas a rastreabilidade.
 - **Backup do banco em JSON**: exportar e restaurar todas as tabelas pela tela de
-  Gestão (restrito ao administrador). A restauração substitui os dados e encerra
+  Gestão (restrito a administrador e técnico). A restauração substitui os dados e encerra
   as sessões; os arquivos das fotos ficam no armazenamento e não entram no
   arquivo.
 

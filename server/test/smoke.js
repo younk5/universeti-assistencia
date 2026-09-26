@@ -208,6 +208,15 @@ try {
   r = await api('POST', `/api/ordens/${osId}/comentarios`, { descricao: 'Diagnóstico: conector oxidado.' });
   ok(r.status === 201, 'anotação técnica registrada');
 
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.acoes?.podePausarPeca === true, 'técnico vê a ação "Aguardando peça" em manutenção');
+  r = await api('POST', `/api/ordens/${osId}/status`, { status: 'aguardando_peca', descricao: 'Aguardando peça: conector de carga' });
+  ok(r.status === 200 && r.dados.ordem.status === 'aguardando_peca', 'técnico pausa o reparo aguardando peça');
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.acoes?.podeRetomar === true && !r.dados.acoes?.podePausarPeca, 'OS pausada oferece "Peça chegou · retomar"');
+  r = await api('POST', `/api/ordens/${osId}/status`, { status: 'em_manutencao', descricao: 'Peça recebida — reparo retomado' });
+  ok(r.status === 200 && r.dados.ordem.status === 'em_manutencao', 'reparo retomado quando a peça chega');
+
   r = await api('POST', `/api/ordens/${osId}/finalizar`, {
     servicoRealizado: 'Troca de tela e vedação',
     pecasUtilizadas: 'Tela OLED, adesivo',
@@ -237,8 +246,12 @@ try {
   ok(r.dados.orcamento?.status === 'aprovado', 'decisão do cliente aparece na OS');
   ok(r.dados.eventos.some((e) => e.tipo_evento === 'orcamento_aprovado'), 'aprovação entra na trilha de auditoria');
 
-  r = await api('POST', `/api/ordens/${osId}/retirar`, { recebidoPor: 'Cliente Smoke Test' });
-  ok(r.status === 403, 'técnico não pode registrar retirada (403)', `status=${r.status}`);
+  r = await api('GET', '/api/auth/me');
+  ok(
+    ['os.retirar', 'os.criar', 'admin.lojas', 'admin.usuarios'].every((p) => r.dados.permissoes?.includes(p)),
+    'técnico tem as mesmas permissões do administrador',
+    JSON.stringify(r.dados.permissoes),
+  );
 
   titulo('Retirada (atendente) e auditoria');
   await api('POST', '/api/auth/login', { email: 'atendente@teste.com', senha: 'Teste@123' });
@@ -336,6 +349,10 @@ try {
   ok(r.status === 403, 'não-admin não lista usuários (403)', `status=${r.status}`);
   r = await api('POST', '/api/lojas', { nome: 'Loja Nova' });
   ok(r.status === 403, 'não-admin não cria loja (403)');
+
+  await api('POST', '/api/auth/login', { email: 'tecnico@teste.com', senha: 'Teste@123' });
+  r = await api('GET', '/api/usuarios');
+  ok(r.status === 200, 'técnico lista usuários (mesmo acesso do admin)', `status=${r.status}`);
 
   await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
   r = await api('POST', '/api/lojas', { nome: 'Guarulhos São João', codigo: 'GSJ' });

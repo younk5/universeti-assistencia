@@ -11,8 +11,8 @@ export function abrirPerfil({ aoFechar } = {}) {
   const botaoSalvar = h('button.btn.btn--primario', { type: 'submit' }, icone('check', { tamanho: 16 }), 'Salvar nova senha');
 
   const campoAtual = h('input.entrada', { type: 'password', autocomplete: 'current-password', required: true });
-  const campoNova = h('input.entrada', { type: 'password', autocomplete: 'new-password', required: true, minLength: 6 });
-  const campoConfirma = h('input.entrada', { type: 'password', autocomplete: 'new-password', required: true, minLength: 6 });
+  const campoNova = h('input.entrada', { type: 'password', autocomplete: 'new-password', required: true, minLength: 8 });
+  const campoConfirma = h('input.entrada', { type: 'password', autocomplete: 'new-password', required: true, minLength: 8 });
   const erroSenha = h('div.campo__erro.oculto');
 
   const formulario = h(
@@ -53,7 +53,7 @@ export function abrirPerfil({ aoFechar } = {}) {
       {},
       h('label.campo__rotulo', {}, 'Nova senha'),
       campoNova,
-      h('span.campo__dica', {}, 'Mínimo de 6 caracteres, com letras e números.'),
+      h('span.campo__dica', {}, 'Mínimo de 8 caracteres, com letras e números.'),
     ),
     h('div.campo', {}, h('label.campo__rotulo', {}, 'Confirmar nova senha'), campoConfirma),
     erroSenha,

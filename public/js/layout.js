@@ -125,7 +125,7 @@ export function montarLayout(rota) {
         h(
           'div.topbar__loja',
           {},
-          store.escopoRede ? (store.ehAdmin ? 'Administrador · todas as lojas' : 'Técnico · todas as lojas') : (usuario?.lojaNome ?? 'Sem loja vinculada'),
+          store.escopoRede ? (store.papel === 'admin' ? 'Administrador · todas as lojas' : 'Técnico · todas as lojas') : (usuario?.lojaNome ?? 'Sem loja vinculada'),
         ),
       ),
     ),

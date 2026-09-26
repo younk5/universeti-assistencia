@@ -25,7 +25,7 @@ export async function paginaAdmin(container) {
   if (!store.ehAdmin) {
     montar(
       container,
-      h('div.card', {}, h('div.card__corpo', {}, estadoVazio({ icone: 'cadeado', titulo: 'Área restrita', texto: 'Somente administradores acessam a gestão de lojas e usuários.' }))),
+      h('div.card', {}, h('div.card__corpo', {}, estadoVazio({ icone: 'cadeado', titulo: 'Área restrita', texto: 'Somente administradores e técnicos acessam a gestão de lojas e usuários.' }))),
     );
     return;
   }
@@ -484,7 +484,7 @@ export async function paginaAdmin(container) {
       {},
       h('label.campo__rotulo', {}, editando ? 'Nova senha (opcional)' : 'Senha inicial *'),
       senha,
-      h('span.campo__dica', {}, 'Mínimo 6 caracteres com letras e números. A senha é guardada com hash scrypt — ninguém consegue lê-la depois.'),
+      h('span.campo__dica', {}, 'Mínimo 8 caracteres com letras e números. A senha é guardada com hash scrypt — ninguém consegue lê-la depois.'),
     );
 
     const sincronizar = () => {
@@ -600,7 +600,7 @@ export async function paginaAdmin(container) {
     );
     const modal = abrirModal({
       titulo: `Redefinir senha de ${usuario.nome}`,
-      descricao: 'Somente o administrador altera senhas',
+      descricao: 'Somente administrador ou técnico altera senhas',
       corpo: formulario,
       rodape: [h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'), botao],
     });

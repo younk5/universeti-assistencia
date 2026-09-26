@@ -36,8 +36,9 @@ export const store = {
     return estado.usuario?.papel ?? null;
   },
 
+  /** Administrador e técnico têm acesso total (mesmas permissões). */
   get ehAdmin() {
-    return estado.usuario?.papel === 'admin';
+    return estado.usuario?.papel === 'admin' || estado.usuario?.papel === 'tecnico';
   },
 
   /**

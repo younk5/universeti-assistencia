@@ -9,7 +9,7 @@ import {
   excluirUsuario,
 } from '../services/usuarios.js';
 import { exigirTexto, exigirLogin, exigirTelefone, exigirEnum, exigirNumero } from '../utils.js';
-import { exigirAutenticacao, exigirPermissao, escopoRede } from '../auth.js';
+import { exigirAutenticacao, exigirPermissao, escopoRede, acessoTotal } from '../auth.js';
 import { semPermissao, invalido } from '../erros.js';
 import { listarExclusoes, registrarExclusao } from '../services/auditoria.js';
 import { exportarBanco, importarBanco } from '../services/backup.js';
@@ -19,7 +19,7 @@ const PAPEIS = ['atendente', 'tecnico', 'admin'];
 
 function exigirAdmin(usuario) {
   exigirAutenticacao(usuario);
-  if (usuario.papel !== 'admin') throw semPermissao('Somente administradores podem gerenciar lojas e usuários.');
+  if (!acessoTotal(usuario)) throw semPermissao('Somente administradores e técnicos podem gerenciar lojas e usuários.');
 }
 
 function payloadLoja(corpo) {
@@ -89,7 +89,7 @@ export function registrar(rota) {
   rota.get('/api/lojas/:id', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
     const id = Number(ctx.params.id);
-    if (ctx.usuario.papel !== 'admin' && id !== ctx.usuario.lojaId) throw semPermissao();
+    if (!acessoTotal(ctx.usuario) && id !== ctx.usuario.lojaId) throw semPermissao();
     return { loja: await buscarLoja(id) };
   });
 

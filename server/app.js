@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { config } from './config.js';
 import { prepararBanco, driverAtual } from './db.js';
 import { montarApi } from './api/index.js';
 import { lerCookies, enviarJson, enviarErro, lerQuery, lerCorpoJson } from './utils.js';import { usuarioDaRequisicao, limparSessoesExpiradas } from './auth.js';
 import { garantirAdminInicial } from './services/usuarios.js';
+import { limitar } from './rate-limit.js';
 
 export const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -28,6 +30,10 @@ const CABECALHOS_SEGURANCA = {
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'geolocation=(), microphone=(), camera=(self)',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'X-Permitted-Cross-Domain-Policies': 'none',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'Content-Security-Policy': [
     "default-src 'self'",
     "img-src 'self' data: blob:",
@@ -38,6 +44,7 @@ const CABECALHOS_SEGURANCA = {
     "font-src 'self' data:",
     "form-action 'self'",
     "base-uri 'self'",
+    "frame-ancestors 'none'",
     "object-src 'none'",
   ].join('; '),
 };
@@ -88,6 +95,22 @@ function aplicarSeguranca(res) {
   }
 }
 
+/**
+ * Proteção CSRF: em métodos que alteram estado, exige que a origem (Origin ou
+ * Referer) bata com o host. Navegadores enviam Origin em requisições
+ * cross-site; sem os cabeçalhos (curl, apps nativos) a checagem é ignorada.
+ */
+function mesmaOrigem(req) {
+  const host = req.headers['x-forwarded-host'] ?? req.headers.host;
+  const alvo = req.headers.origin ?? req.headers.referer;
+  if (!alvo || !host) return true;
+  try {
+    return new URL(alvo).host === host;
+  } catch {
+    return false;
+  }
+}
+
 export function servirArquivoEstatico(req, res, urlPath) {
   const relativo = urlPath === '/' ? 'index.html' : decodeURIComponent(urlPath.replace(/^\/+/, ''));
   const destino = path.resolve(config.publicDir, relativo);
@@ -98,14 +121,21 @@ export function servirArquivoEstatico(req, res, urlPath) {
   if (!fs.existsSync(destino) || fs.statSync(destino).isDirectory()) return false;
 
   const ext = path.extname(destino).toLowerCase();
-  const conteudo = fs.readFileSync(destino);
-  const imutavel = /\/vendor\/|\.woff2?$/.test(urlPath);
-  res.writeHead(200, {
+  let conteudo = fs.readFileSync(destino);
+  const imutavel = /\/vendor\/|\/img\/|\.woff2?$/.test(urlPath);
+  const compressivel = ['.html', '.js', '.mjs', '.css', '.json', '.svg', '.webmanifest', '.txt'].includes(ext);
+  const cabecalhos = {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
-    'Content-Length': conteudo.length,
     'Cache-Control': imutavel ? 'public, max-age=31536000, immutable' : 'no-cache',
-    ETag: `W"${conteudo.length.toString(16)}-${ext}"`,
-  });
+    Vary: 'Accept-Encoding',
+  };
+  if (compressivel && conteudo.length > 1024 && /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''))) {
+    conteudo = zlib.gzipSync(conteudo, { level: 6 });
+    cabecalhos['Content-Encoding'] = 'gzip';
+  }
+  cabecalhos['Content-Length'] = conteudo.length;
+  cabecalhos.ETag = `W"${conteudo.length.toString(16)}-${ext}"`;
+  res.writeHead(200, cabecalhos);
   res.end(conteudo);
   return true;
 }
@@ -169,6 +199,14 @@ export async function tratarRequisicao(req, res, { servirEstaticos = true } = {}
     return;
   }
 
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && !mesmaOrigem(req)) {
+    enviarJson(res, 403, {
+      ok: false,
+      erro: { codigo: 'origem_invalida', mensagem: 'Requisição bloqueada pela proteção contra CSRF.' },
+    });
+    return;
+  }
+
   if (servirEstaticos && !caminho.startsWith('/api/')) {
     if (servirArquivoEstatico(req, res, caminho)) return;
     if (req.method === 'GET' || req.method === 'HEAD') {
@@ -197,6 +235,12 @@ export async function tratarRequisicao(req, res, { servirEstaticos = true } = {}
   }
 
   req.cookies = lerCookies(req);
+
+  // Limite geral da API por IP (as rotas públicas têm limite mais rígido).
+  if (caminho.startsWith('/api/')) {
+    limitar(req, 'api', { max: 600, janelaMs: 60_000 });
+  }
+
   const usuario = await usuarioDaRequisicao(req);
 
   const encontrada = rota.encontrar(req.method, caminho);

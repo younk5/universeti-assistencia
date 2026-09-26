@@ -51,7 +51,7 @@ export function conferirSenha(senha, hashArmazenado) {
 
 export function validarForcaSenha(senha) {
   const texto = String(senha ?? '');
-  if (texto.length < 6) throw invalido('A senha deve ter ao menos 6 caracteres.', { campo: 'senha' });
+  if (texto.length < 8) throw invalido('A senha deve ter ao menos 8 caracteres.', { campo: 'senha' });
   if (texto.length > 128) throw invalido('A senha deve ter no máximo 128 caracteres.', { campo: 'senha' });
   if (!/[A-Za-z]/.test(texto) || !/[0-9]/.test(texto)) {
     throw invalido('A senha deve conter letras e números.', { campo: 'senha' });
@@ -143,13 +143,16 @@ export async function usuarioDaRequisicao(req) {
 /* Autorização                                                                 */
 /* -------------------------------------------------------------------------- */
 
+const PERMISSOES_TOTAIS = [
+  'os.criar', 'os.ver', 'os.ver_todas', 'os.assumir', 'os.finalizar',
+  'os.retirar', 'os.comentar', 'os.reabrir', 'admin.lojas', 'admin.usuarios', 'relatorios',
+];
+
+// Técnico e administrador têm exatamente as mesmas permissões.
 export const PERMISSOES = {
-  admin: [
-    'os.criar', 'os.ver', 'os.ver_todas', 'os.assumir', 'os.finalizar',
-    'os.retirar', 'os.comentar', 'os.reabrir', 'admin.lojas', 'admin.usuarios', 'relatorios',
-  ],
+  admin: PERMISSOES_TOTAIS,
+  tecnico: PERMISSOES_TOTAIS,
   atendente: ['os.criar', 'os.ver', 'os.retirar', 'os.comentar', 'relatorios'],
-  tecnico: ['os.ver', 'os.assumir', 'os.finalizar', 'os.comentar', 'relatorios'],
 };
 
 export function pode(usuario, permissao) {
@@ -158,12 +161,18 @@ export function pode(usuario, permissao) {
 }
 
 /**
+ * Acesso total: administrador e técnico podem tudo (gestão, exclusão,
+ * cancelamento, reabertura) e enxergam a rede inteira.
+ */
+export function acessoTotal(usuario) {
+  return Boolean(usuario) && (usuario.papel === 'admin' || usuario.papel === 'tecnico');
+}
+
+/**
  * Escopo de visão: administrador e técnico enxergam a rede inteira;
  * o atendente fica restrito à própria loja.
  */
-export function escopoRede(usuario) {
-  return Boolean(usuario) && (usuario.papel === 'admin' || usuario.papel === 'tecnico');
-}
+export const escopoRede = acessoTotal;
 
 export function exigirPermissao(usuario, permissao) {
   if (!usuario) throw naoAutenticado();

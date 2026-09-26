@@ -15,6 +15,18 @@ const MAX_TENTATIVAS = 8;
 const JANELA_BLOQUEIO_MS = 10 * 60 * 1000;
 const tentativas = new Map();
 
+// Compara a senha mesmo quando o usuário não existe, para que o tempo de
+// resposta não revele se o login é válido (evita enumeração de usuários).
+let hashDummy = null;
+function conferirSenhaTempoConstante(senha, registro) {
+  if (registro) return conferirSenha(senha, registro.senha_hash);
+  if (!hashDummy) hashDummy = gerarHashSenha('tempo-constante-dummy');
+  conferirSenha(senha, hashDummy);
+  return false;
+}
+
+const senhaPadraoConfigurada = () => process.env.ADMIN_SENHA || 'galaxy2026!';
+
 function chaveTentativa(req, email) {
   const ip = req.socket?.remoteAddress ?? 'desconhecido';
   return `${ip}|${email}`;
@@ -54,7 +66,7 @@ export function registrar(rota) {
     verificarBloqueio(chave);
 
     const registro = await consultarUm('SELECT * FROM usuarios WHERE email = ? COLLATE NOCASE', login);
-    const senhaOk = registro ? conferirSenha(senha, registro.senha_hash) : false;
+    const senhaOk = conferirSenhaTempoConstante(senha, registro);
 
     if (!registro || !senhaOk) {
       registrarFalha(chave);
@@ -88,6 +100,7 @@ export function registrar(rota) {
         lojaId: registro.loja_id,
         lojaNome: loja?.nome ?? null,
         lojaCodigo: loja?.codigo ?? null,
+        senhaPadrao: conferirSenha(senhaPadraoConfigurada(), registro.senha_hash),
       },
       permissoes: PERMISSOES[registro.papel] ?? [],
       expiraEm: sessao.expiraEm,
@@ -102,8 +115,10 @@ export function registrar(rota) {
 
   rota.get('/api/auth/me', async (ctx) => {
     if (!ctx.usuario) throw naoAutenticado();
+    const registro = await consultarUm('SELECT senha_hash FROM usuarios WHERE id = ?', ctx.usuario.id);
+    const senhaPadrao = registro ? conferirSenha(senhaPadraoConfigurada(), registro.senha_hash) : false;
     return {
-      usuario: ctx.usuario,
+      usuario: { ...ctx.usuario, senhaPadrao },
       permissoes: PERMISSOES[ctx.usuario.papel] ?? [],
     };
   });

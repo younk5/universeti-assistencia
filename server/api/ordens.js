@@ -34,7 +34,7 @@ import {
   agoraISO,
   telefoneParaWhatsapp,
 } from '../utils.js';
-import { exigirAutenticacao, exigirPermissao, pode, escopoRede } from '../auth.js';
+import { exigirAutenticacao, exigirPermissao, pode, escopoRede, acessoTotal } from '../auth.js';
 import { ErroApp, invalido, naoEncontrado, semPermissao } from '../erros.js';
 
 export const TIPO_APARELHO = 'Celular';
@@ -214,7 +214,7 @@ export function registrar(rota) {
     const dados = normalizarPayloadOS(ctx.corpo);
 
     let lojaId = ctx.usuario.lojaId;
-    if (ctx.usuario.papel === 'admin') {
+    if (acessoTotal(ctx.usuario)) {
       lojaId = ctx.corpo.lojaId ? Number(ctx.corpo.lojaId) : ctx.usuario.lojaId;
       if (!lojaId) throw invalido('Selecione a loja de entrada.', { campo: 'lojaId' });
     }
@@ -297,8 +297,8 @@ export function registrar(rota) {
   /* -------------------------------- Excluir ------------------------------ */
   rota.delete('/api/ordens/:id', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
-    if (ctx.usuario.papel !== 'admin') {
-      throw semPermissao('Somente o administrador pode excluir uma OS.');
+    if (!acessoTotal(ctx.usuario)) {
+      throw semPermissao('Somente administrador ou técnico pode excluir uma OS.');
     }
     const os = await excluirOS(Number(ctx.params.id), ctx.usuario);
     return { mensagem: `OS ${os.numero_os} excluída definitivamente.` };
@@ -309,7 +309,7 @@ export function registrar(rota) {
     exigirAutenticacao(ctx.usuario);
     exigirPermissao(ctx.usuario, 'os.assumir');
     const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
-    const tecnicoId = ctx.usuario.papel === 'admin' && ctx.corpo.tecnicoId ? Number(ctx.corpo.tecnicoId) : ctx.usuario.id;
+    const tecnicoId = acessoTotal(ctx.usuario) && ctx.corpo.tecnicoId ? Number(ctx.corpo.tecnicoId) : ctx.usuario.id;
     const tecnico = await consultarUm('SELECT id, nome, papel, loja_id FROM usuarios WHERE id = ? AND ativo = 1', tecnicoId);
     if (!tecnico || !['tecnico', 'admin'].includes(tecnico.papel)) {
       throw invalido('Técnico inválido.', { campo: 'tecnicoId' });
@@ -349,8 +349,8 @@ export function registrar(rota) {
       campos.iniciado_em = os.iniciado_em ?? agoraISO();
       tiposEvento[novoStatus] = 'assumir';
     }
-    if ([STATUS.AGUARDANDO, STATUS.CANCELADO].includes(novoStatus) && ctx.usuario.papel !== 'admin') {
-      throw semPermissao('Apenas o administrador pode reabrir ou cancelar uma OS.');
+    if ([STATUS.AGUARDANDO, STATUS.CANCELADO].includes(novoStatus) && !acessoTotal(ctx.usuario)) {
+      throw semPermissao('Apenas administrador ou técnico pode reabrir ou cancelar uma OS.');
     }
     if (novoStatus === STATUS.CANCELADO && !descricao) {
       throw invalido('Informe o motivo do cancelamento.', { campo: 'descricao' });
@@ -608,14 +608,16 @@ function transicoesPermitidas(os, usuario) {
 function acoesDisponiveis(os, usuario) {
   return {
     podeAssumir: os.status === STATUS.AGUARDANDO && pode(usuario, 'os.assumir'),
+    podePausarPeca: os.status === STATUS.EM_MANUTENCAO && pode(usuario, 'os.assumir'),
+    podeRetomar: os.status === STATUS.AGUARDANDO_PECA && pode(usuario, 'os.assumir'),
     podeFinalizar:
       [STATUS.EM_MANUTENCAO, STATUS.AGUARDANDO_PECA, STATUS.AGUARDANDO].includes(os.status) &&
       pode(usuario, 'os.finalizar'),
     podeRetirar: os.status === STATUS.PRONTO && pode(usuario, 'os.retirar'),
     podeComentar: pode(usuario, 'os.comentar') && os.status !== STATUS.RETIRADO,
     podeAnexarFoto: os.status !== STATUS.RETIRADO,
-    podeCancelar: os.status !== STATUS.RETIRADO && usuario.papel === 'admin',
-    podeReabrir: os.status === STATUS.CANCELADO && usuario.papel === 'admin',
+    podeCancelar: os.status !== STATUS.RETIRADO && acessoTotal(usuario),
+    podeReabrir: os.status === STATUS.CANCELADO && acessoTotal(usuario),
     podeGarantia:
       os.status === STATUS.RETIRADO &&
       Boolean(os.garantia_ate) &&

@@ -187,6 +187,12 @@ export function paginaOSDetalhe(container, params) {
       'div.painel-acoes',
       {},
       acoes.podeAssumir ? botaoAssumir(os) : null,
+      acoes.podePausarPeca
+        ? h('button.btn.btn--secundario', { type: 'button', onclick: () => pausarPorPeca(os) }, icone('pacote', { tamanho: 16 }), 'Aguardando peça')
+        : null,
+      acoes.podeRetomar
+        ? h('button.btn.btn--primario', { type: 'button', onclick: () => retomarReparo(os) }, icone('recarregar', { tamanho: 16 }), 'Peça chegou · retomar')
+        : null,
       acoes.podeFinalizar
         ? h(
             'button.btn.btn--sucesso',
@@ -399,7 +405,7 @@ export function paginaOSDetalhe(container, params) {
         h(
           'p.texto-mini.texto-fraco',
           {},
-          'Registros de auditoria não podem ser editados. A exclusão de uma OS (administrador) ou de um anexo é definitiva.',
+          'Registros de auditoria não podem ser editados. A exclusão de uma OS (administrador ou técnico) ou de um anexo é definitiva.',
         ),
       ),
     );
@@ -476,6 +482,33 @@ export function paginaOSDetalhe(container, params) {
     }
   }
 
+  async function pausarPorPeca(os) {
+    const peca = await pedirMotivo('Aguardando peça', `O reparo da OS ${os.numero_os} fica pausado até a peça chegar. Isso entra no histórico.`, {
+      rotulo: 'Qual peça está faltando?',
+      placeholder: 'Ex: tela OLED original — pedida ao fornecedor X, previsão 3 dias úteis.',
+      textoConfirmar: 'Pausar reparo',
+      classeBotao: 'btn--primario',
+    });
+    if (peca === null) return;
+    try {
+      const resposta = await api.post(`/api/ordens/${os.id}/status`, { status: 'aguardando_peca', descricao: `Aguardando peça: ${peca}` });
+      toastSucesso(resposta.mensagem);
+      await carregar();
+    } catch (erro) {
+      toastErro(erro.message);
+    }
+  }
+
+  async function retomarReparo(os) {
+    try {
+      const resposta = await api.post(`/api/ordens/${os.id}/status`, { status: 'em_manutencao', descricao: 'Peça recebida — reparo retomado' });
+      toastSucesso(resposta.mensagem);
+      await carregar();
+    } catch (erro) {
+      toastErro(erro.message);
+    }
+  }
+
   async function reabrirOS(os) {
     const confirmado = await confirmar({
       titulo: 'Reabrir OS',
@@ -484,7 +517,7 @@ export function paginaOSDetalhe(container, params) {
     });
     if (!confirmado) return;
     try {
-      const resposta = await api.post(`/api/ordens/${os.id}/status`, { status: 'aguardando', descricao: 'OS reaberta pelo administrador' });
+      const resposta = await api.post(`/api/ordens/${os.id}/status`, { status: 'aguardando', descricao: `OS reaberta por ${store.usuario?.nome ?? 'gestão'}` });
       toastSucesso(resposta.mensagem);
       await carregar();
     } catch (erro) {
@@ -720,10 +753,19 @@ function pedirObservacao({ titulo, descricao, textoConfirmar = 'Confirmar' }) {
   });
 }
 
-function pedirMotivo(titulo, descricao) {
+function pedirMotivo(
+  titulo,
+  descricao,
+  {
+    rotulo = 'Motivo',
+    placeholder = 'Ex: cliente recusou o orçamento de R$ 480,00.',
+    textoConfirmar = 'Confirmar cancelamento',
+    classeBotao = 'btn--perigo',
+  } = {},
+) {
   return new Promise((resolve) => {
-    const campoTexto = h('textarea.area-texto', { rows: 3, required: true, placeholder: 'Ex: cliente recusou o orçamento de R$ 480,00.' });
-    const botao = h('button.btn.btn--perigo', { type: 'button' }, 'Confirmar cancelamento');
+    const campoTexto = h('textarea.area-texto', { rows: 3, required: true, placeholder });
+    const botao = h(`button.btn.${classeBotao}`, { type: 'button' }, textoConfirmar);
     const formulario = h(
       'form.pilha',
       {
@@ -738,7 +780,7 @@ function pedirMotivo(titulo, descricao) {
           modal.fechar();
         },
       },
-      h('div.campo', {}, h('label.campo__rotulo', {}, 'Motivo'), campoTexto),
+      h('div.campo', {}, h('label.campo__rotulo', {}, rotulo), campoTexto),
     );
     botao.addEventListener('click', () => formulario.requestSubmit());
     const modal = abrirModal({

@@ -4,6 +4,7 @@ import { ROTULOS_STATUS } from '../services/ordens.js';
 import { orcamentoPublico, decidirOrcamentoPorToken, STATUS_ORCAMENTO, ROTULOS_ORCAMENTO } from '../services/orcamentos.js';
 import { lerNumeroConfig, CHAVES } from '../services/configuracoes.js';
 import { invalido } from '../erros.js';
+import { limitar } from '../rate-limit.js';
 
 /**
  * Rotas públicas (sem login) usadas pelo cliente final:
@@ -37,6 +38,7 @@ function linhaDoTempo(eventos) {
 export function registrar(rota) {
   /* ---------------------- Acompanhamento da OS ---------------------------- */
   rota.get('/api/publico/os/:numero', async (ctx) => {
+    limitar(ctx.req, 'publico-os', { max: 30, janelaMs: 60_000 });
     const numero = exigirTexto(ctx.params.numero, 'número da OS', { max: 40 }).toUpperCase();
     const digitos = normalizarDigitos(ctx.query.tel ?? '');
     if (digitos.length < 4) {
@@ -98,10 +100,12 @@ export function registrar(rota) {
 
   /* ------------------------ Orçamento público ----------------------------- */
   rota.get('/api/publico/orcamento/:token', async (ctx) => {
+    limitar(ctx.req, 'publico-orcamento', { max: 30, janelaMs: 60_000 });
     return { orcamento: await orcamentoPublico(ctx.params.token) };
   });
 
   rota.post('/api/publico/orcamento/:token', async (ctx) => {
+    limitar(ctx.req, 'publico-orcamento', { max: 30, janelaMs: 60_000 });
     const decisao = exigirTexto(ctx.corpo.decisao, 'decisão', { max: 20 });
     const observacao = exigirTexto(ctx.corpo.observacao, 'observação', { max: 300, opcional: true });
     const resultado = await decidirOrcamentoPorToken(ctx.params.token, { decisao, observacao });
