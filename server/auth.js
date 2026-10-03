@@ -49,6 +49,44 @@ export function conferirSenha(senha, hashArmazenado) {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Senha reversível — AES-256-GCM                                              */
+/* Guardada além do hash para que admin/técnico possam consultá-la na tela de  */
+/* gestão. É uma decisão consciente de segurança: com a chave do servidor e o  */
+/* banco em mãos, a senha pode ser recuperada.                                 */
+/* -------------------------------------------------------------------------- */
+
+const CIFRA = 'aes-256-gcm';
+
+function chaveCifraSenha() {
+  return crypto.createHash('sha256').update(`universeti-senha:${config.senhaSecret}`).digest();
+}
+
+/** Cifra a senha em texto puro. Retorna null para senha vazia. */
+export function cifrarSenha(senha) {
+  if (senha === null || senha === undefined || senha === '') return null;
+  const iv = crypto.randomBytes(12);
+  const cifra = crypto.createCipheriv(CIFRA, chaveCifraSenha(), iv);
+  const conteudo = Buffer.concat([cifra.update(String(senha), 'utf8'), cifra.final()]);
+  return ['v1', iv.toString('base64'), cifra.getAuthTag().toString('base64'), conteudo.toString('base64')].join('$');
+}
+
+/** Decifra a senha. Retorna null se o valor for inválido ou a chave tiver mudado. */
+export function decifrarSenha(valor) {
+  if (typeof valor !== 'string' || !valor) return null;
+  try {
+    const partes = valor.split('$');
+    if (partes.length !== 4 || partes[0] !== 'v1') return null;
+    const [, ivB64, tagB64, conteudoB64] = partes;
+    const decifra = crypto.createDecipheriv(CIFRA, chaveCifraSenha(), Buffer.from(ivB64, 'base64'));
+    decifra.setAuthTag(Buffer.from(tagB64, 'base64'));
+    const texto = Buffer.concat([decifra.update(Buffer.from(conteudoB64, 'base64')), decifra.final()]);
+    return texto.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
 export function validarForcaSenha(senha) {
   const texto = String(senha ?? '');
   if (texto.length < 8) throw invalido('A senha deve ter ao menos 8 caracteres.', { campo: 'senha' });

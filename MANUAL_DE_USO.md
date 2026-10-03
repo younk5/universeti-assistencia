@@ -206,7 +206,7 @@ Menu **Gestão**, com as abas:
 | Aba | O que faz |
 | --- | --- |
 | **Lojas** | **Nova loja**, editar, **Desativar/Reativar** e **Excluir**. Loja desativada não recebe novas OS. |
-| **Usuários** | **Novo usuário**, editar, **Desativar/Reativar**, **Excluir** e **Redefinir senha** (com botão de gerar senha forte e copiar). Atendente precisa de loja; técnico e administrador podem ficar sem loja. |
+| **Usuários** | **Novo usuário**, editar, **Desativar/Reativar**, **Excluir** e **Redefinir senha** (com botão de gerar senha forte e copiar). Na coluna **Senha**, admin/técnico clicam no olho para **ver a senha** de qualquer usuário. Atendente precisa de loja; técnico e administrador podem ficar sem loja. |
 | **Regras** | Garantia padrão (dias) e prazo padrão de retirada. |
 | **Auditoria** | Registro de todas as exclusões: quem apagou, o quê e quando. **Exportar backup (.json)** e **Restaurar backup**. |
 
@@ -216,6 +216,12 @@ Menu **Gestão**, com as abas:
 >
 > O sistema não deixa excluir ou desativar o **último administrador**, nem
 > excluir a própria conta.
+>
+> **Ver senha:** admin e técnico conseguem consultar a senha de cada usuário na
+> coluna **Senha** da aba Usuários. Contas cadastradas **antes** deste recurso
+> aparecem com "—"; use **Redefinir senha** uma vez para que a senha passe a ser
+> visível. A senha é guardada de forma cifrada (reversível) — decisão de
+> segurança assumida para dar esse acesso à gestão.
 
 ---
 

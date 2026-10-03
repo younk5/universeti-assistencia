@@ -568,17 +568,32 @@ try {
   titulo('Troca de senha');
   await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
   const lojasParaSenha = await api('GET', '/api/lojas');
-  await api('POST', '/api/usuarios', {
+  const criadoSenha = await api('POST', '/api/usuarios', {
     nome: 'Atendente Senha',
     email: 'atendente.senha@teste.com',
     senha: 'Teste@123',
     papel: 'atendente',
     lojaId: lojasParaSenha.dados.lojas?.[0]?.id,
   });
+  const idSenhaUsuario = criadoSenha.dados.usuario?.id;
+
+  r = await api('GET', '/api/usuarios');
+  const alvoSenha = r.dados.usuarios?.find((u) => u.id === idSenhaUsuario);
+  ok(alvoSenha?.tem_senha === 1 || alvoSenha?.tem_senha === true, 'lista sinaliza que a senha é consultável');
+
+  r = await api('GET', `/api/usuarios/${idSenhaUsuario}/senha`);
+  ok(r.status === 200 && r.dados.senha === 'Teste@123', 'admin consulta a senha cadastrada', `status=${r.status}`);
+
   await api('POST', '/api/auth/login', { email: 'atendente.senha@teste.com', senha: 'Teste@123' });
+  r = await api('GET', `/api/usuarios/${idSenhaUsuario}/senha`);
+  ok(r.status === 403, 'atendente não consulta senha de ninguém (403)', `status=${r.status}`);
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'Teste@123', novaSenha: 'Nova@123' });
   ok(r.status === 403, 'atendente não pode alterar a própria senha (403)', `status=${r.status}`);
   await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Teste@123' });
+  r = await api('POST', `/api/usuarios/${idSenhaUsuario}/senha`, { novaSenha: 'Visivel@123' });
+  ok(r.status === 200, 'admin redefine a senha do usuário');
+  r = await api('GET', `/api/usuarios/${idSenhaUsuario}/senha`);
+  ok(r.status === 200 && r.dados.senha === 'Visivel@123', 'senha redefinida aparece na consulta', `senha=${r.dados.senha}`);
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'errada', novaSenha: 'Nova@123' });
   ok(r.status === 422, 'senha atual incorreta é rejeitada');
   r = await api('POST', '/api/auth/senha', { senhaAtual: 'Teste@123', novaSenha: 'Nova@123' });

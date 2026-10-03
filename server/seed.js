@@ -3,7 +3,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { config, caminhos } from './config.js';
 import { carregarDriver, prepararBanco, transacao, consultarUm, executar, fecharBanco, driverAtual, suspenderProtecaoAuditoria, restaurarProtecaoAuditoria } from './db.js';
-import { gerarHashSenha } from './auth.js';
+import { gerarHashSenha, cifrarSenha } from './auth.js';
 import { salvarImagem } from './storage.js';
 import { agoraISO } from './utils.js';
 
@@ -189,12 +189,13 @@ async function semear() {
 
     for (const usuario of USUARIOS) {
       const info = await conexao.run(
-        `INSERT INTO usuarios (nome, email, senha_hash, papel, loja_id, telefone, ativo, criado_em)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+        `INSERT INTO usuarios (nome, email, senha_hash, senha_cifrada, papel, loja_id, telefone, ativo, criado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
         [
           usuario.nome,
           usuario.email,
           gerarHashSenha(SENHA_PADRAO),
+          cifrarSenha(SENHA_PADRAO),
           usuario.papel,
           usuario.loja ? idLoja[usuario.loja] : null,
           usuario.telefone,

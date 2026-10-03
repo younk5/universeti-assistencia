@@ -15,6 +15,9 @@ export const config = {
   dataDir: path.resolve(raizProjeto, env('DATA_DIR', './data')),
   publicDir: path.join(raizProjeto, 'public'),
   sessionSecret: env('SESSION_SECRET', 'troque-este-segredo-em-producao'),
+  // Chave usada para cifrar as senhas de forma reversível (admin/técnico
+  // conseguem consultá-las). Cai para SESSION_SECRET quando não definida.
+  senhaSecret: env('SENHA_SECRET', env('SESSION_SECRET', 'troque-este-segredo-em-producao')),
   sessionTtlDias: Number(env('SESSION_TTL_DIAS', 30)),
   maxUploadBytes: 6 * 1024 * 1024,
   ambiente: env('NODE_ENV', 'development'),

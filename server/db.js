@@ -173,6 +173,7 @@ function localizarSchema() {
  * já existe antes de adicionar.
  */
 const COLUNAS_INCREMENTAIS = {
+  usuarios: [['senha_cifrada', 'TEXT']],
   ordens_servico: [
     ['checklist', 'TEXT'],
     ['orcamento_valor', 'REAL'],
@@ -225,7 +226,29 @@ export async function aplicarMigracoes(atual) {
     }
   }
 
+  await garantirColunaSenhaCifrada(atual);
   await relaxarLojaUsuarios(atual);
+}
+
+/**
+ * Garante a coluna `senha_cifrada` mesmo quando o driver não responde a
+ * `PRAGMA table_info` (provável em alguns alvos libSQL). Faz uma leitura de
+ * sondagem: se a coluna não existir, adiciona via ALTER TABLE.
+ */
+async function garantirColunaSenhaCifrada(atual) {
+  try {
+    await atual.consultar('SELECT senha_cifrada FROM usuarios LIMIT 1');
+    return;
+  } catch {
+    /* coluna ausente — tenta adicionar */
+  }
+  try {
+    await atual.executar('ALTER TABLE usuarios ADD COLUMN senha_cifrada TEXT');
+  } catch (erro) {
+    if (!/duplicate column|já existe|already exists/i.test(String(erro?.message ?? ''))) {
+      console.warn('[migração] não foi possível criar usuarios.senha_cifrada:', erro?.message ?? erro);
+    }
+  }
 }
 
 /**
@@ -252,6 +275,7 @@ async function relaxarLojaUsuarios(atual) {
     nome       TEXT    NOT NULL,
     email      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
     senha_hash TEXT    NOT NULL,
+    senha_cifrada TEXT,
     papel      TEXT    NOT NULL CHECK (papel IN ('atendente', 'tecnico', 'admin')),
     loja_id    INTEGER REFERENCES lojas(id) ON DELETE RESTRICT,
     telefone   TEXT,
@@ -264,8 +288,8 @@ async function relaxarLojaUsuarios(atual) {
     'CREATE TABLE usuarios_backup AS SELECT * FROM usuarios',
     'DROP TABLE usuarios',
     ddl,
-    `INSERT INTO usuarios (id, nome, email, senha_hash, papel, loja_id, telefone, ativo, criado_em)
-       SELECT id, nome, email, senha_hash, papel, loja_id, telefone, ativo, criado_em FROM usuarios_backup`,
+    `INSERT INTO usuarios (id, nome, email, senha_hash, senha_cifrada, papel, loja_id, telefone, ativo, criado_em)
+       SELECT id, nome, email, senha_hash, senha_cifrada, papel, loja_id, telefone, ativo, criado_em FROM usuarios_backup`,
     'DROP TABLE usuarios_backup',
     'CREATE INDEX IF NOT EXISTS idx_usuarios_loja ON usuarios(loja_id)',
   ];

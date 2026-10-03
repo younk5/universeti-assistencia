@@ -20,7 +20,7 @@ const TABELAS = [
   { nome: 'lojas', colunas: ['id', 'codigo', 'nome', 'endereco', 'telefone', 'ativo', 'criado_em'] },
   {
     nome: 'usuarios',
-    colunas: ['id', 'nome', 'email', 'senha_hash', 'papel', 'loja_id', 'telefone', 'ativo', 'criado_em'],
+    colunas: ['id', 'nome', 'email', 'senha_hash', 'senha_cifrada', 'papel', 'loja_id', 'telefone', 'ativo', 'criado_em'],
   },
   {
     nome: 'ordens_servico',

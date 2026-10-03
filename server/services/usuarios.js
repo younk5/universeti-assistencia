@@ -1,13 +1,14 @@
 import { consultar, consultarUm, executar, semChavesEstrangeiras } from '../db.js';
 import { registrarExclusao } from './auditoria.js';
 import { agoraISO } from '../utils.js';
-import { gerarHashSenha, validarForcaSenha } from '../auth.js';
+import { gerarHashSenha, validarForcaSenha, cifrarSenha, decifrarSenha } from '../auth.js';
 import { conflito, naoEncontrado, invalido } from '../erros.js';
 
 const PAPEIS = ['atendente', 'tecnico', 'admin'];
 
 const CAMPOS_PUBLICOS =
-  'u.id, u.nome, u.email, u.papel, u.loja_id, u.telefone, u.ativo, u.criado_em, l.nome AS loja_nome, l.codigo AS loja_codigo';
+  'u.id, u.nome, u.email, u.papel, u.loja_id, u.telefone, u.ativo, u.criado_em, ' +
+  '(u.senha_cifrada IS NOT NULL) AS tem_senha, l.nome AS loja_nome, l.codigo AS loja_codigo';
 
 export async function listarUsuarios({ lojaId = null, papel = null, apenasAtivos = false } = {}) {
   const where = [];
@@ -54,11 +55,12 @@ export async function criarUsuario({ nome, email, senha, papel, lojaId, telefone
   }
   validarForcaSenha(senha);
   const info = await executar(
-    `INSERT INTO usuarios (nome, email, senha_hash, papel, loja_id, telefone, ativo, criado_em)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO usuarios (nome, email, senha_hash, senha_cifrada, papel, loja_id, telefone, ativo, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
     nome,
     email.toLowerCase(),
     gerarHashSenha(senha),
+    cifrarSenha(senha),
     papel,
     lojaId ?? null,
     telefone ?? null,
@@ -117,9 +119,25 @@ export async function alterarSenha(id, novaSenha) {
   const usuario = await consultarUm('SELECT id FROM usuarios WHERE id = ?', id);
   if (!usuario) throw naoEncontrado('Usuário não encontrado.');
   validarForcaSenha(novaSenha);
-  await executar('UPDATE usuarios SET senha_hash = ? WHERE id = ?', gerarHashSenha(novaSenha), id);
+  await executar(
+    'UPDATE usuarios SET senha_hash = ?, senha_cifrada = ? WHERE id = ?',
+    gerarHashSenha(novaSenha),
+    cifrarSenha(novaSenha),
+    id,
+  );
   await executar('DELETE FROM sessoes WHERE usuario_id = ?', id);
   return true;
+}
+
+/**
+ * Senha legível para a gestão (admin/técnico). Retorna null quando o usuário
+ * não existe ou quando a senha foi cadastrada antes do recurso de consulta —
+ * nesse caso é preciso redefini-la para que passe a aparecer.
+ */
+export async function obterSenhaUsuario(id) {
+  const registro = await consultarUm('SELECT senha_cifrada FROM usuarios WHERE id = ?', id);
+  if (!registro) throw naoEncontrado('Usuário não encontrado.');
+  return decifrarSenha(registro.senha_cifrada);
 }
 
 /**

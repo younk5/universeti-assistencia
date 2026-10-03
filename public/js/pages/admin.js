@@ -341,6 +341,7 @@ export async function paginaAdmin(container) {
                 h('th', {}, 'Perfil'),
                 h('th', {}, 'Loja'),
                 h('th', {}, 'Situação'),
+                h('th', {}, 'Senha'),
                 h('th', {}, 'Criado em'),
                 h('th', {}, 'Ações'),
               ),
@@ -376,6 +377,7 @@ export async function paginaAdmin(container) {
                       ? h('span.badge.badge--pronto', {}, 'Ativo')
                       : h('span.badge.badge--retirado', {}, 'Inativo'),
                   ),
+                  celulaSenha(usuario),
                   h('td.texto-mini.texto-fraco', {}, data(usuario.criado_em)),
                   h(
                     'td',
@@ -423,6 +425,59 @@ export async function paginaAdmin(container) {
       h('div.linha.linha--entre', {}, h('h2', {}, 'Equipe'), botaoNovo),
       lista,
     );
+  }
+
+  /**
+   * Coluna "Senha": mostra pontos e revela sob demanda para admin/técnico.
+   * Só contas criadas/alteradas após este recurso guardam a senha de forma
+   * reversível; contas antigas aparecem como "—" até serem redefinidas.
+   */
+  function celulaSenha(usuario) {
+    if (!usuario.tem_senha) {
+      return h(
+        'td',
+        {},
+        h(
+          'span.texto-mini.texto-fraco',
+          { title: 'Senha cadastrada antes do recurso de consulta. Use "Redefinir senha" para definir uma visível.' },
+          '—',
+        ),
+      );
+    }
+
+    const valor = h('span.texto-mono.texto-pequeno', {}, '••••••••');
+    const botao = h('button.btn.btn--pequeno.btn--fantasma', { type: 'button', title: 'Ver senha' }, icone('olho', { tamanho: 14 }));
+    let revelada = false;
+    let senha = null;
+
+    botao.addEventListener('click', async () => {
+      if (revelada) {
+        revelada = false;
+        valor.textContent = '••••••••';
+        montar(botao, icone('olho', { tamanho: 14 }));
+        botao.title = 'Ver senha';
+        return;
+      }
+      if (senha === null) {
+        try {
+          const resposta = await api.get(`/api/usuarios/${usuario.id}/senha`);
+          if (!resposta.disponivel) {
+            toastErro(resposta.mensagem ?? 'Senha indisponível.', { titulo: 'Não foi possível ver' });
+            return;
+          }
+          senha = resposta.senha;
+        } catch (erro) {
+          toastErro(erro.message, { titulo: 'Não foi possível ver a senha' });
+          return;
+        }
+      }
+      revelada = true;
+      valor.textContent = senha;
+      montar(botao, icone('olhoFechado', { tamanho: 14 }));
+      botao.title = 'Ocultar senha';
+    });
+
+    return h('td', {}, h('div.linha', { style: { gap: '6px', flexWrap: 'nowrap' } }, valor, botao));
   }
 
   async function alternarAtivo(usuario) {
@@ -484,7 +539,7 @@ export async function paginaAdmin(container) {
       {},
       h('label.campo__rotulo', {}, editando ? 'Nova senha (opcional)' : 'Senha inicial *'),
       senha,
-      h('span.campo__dica', {}, 'Mínimo 8 caracteres com letras e números. A senha é guardada com hash scrypt — ninguém consegue lê-la depois.'),
+      h('span.campo__dica', {}, 'Mínimo 8 caracteres com letras e números. A senha é guardada com hash scrypt para o login e também cifrada, para que admin/técnico possam consultá-la na lista de usuários.'),
     );
 
     const sincronizar = () => {
@@ -595,7 +650,7 @@ export async function paginaAdmin(container) {
       },
       erro,
       h('p.texto-pequeno.texto-suave', {}, `Nova senha de ${usuario.nome} (${iniciaisPapel(usuario.papel)}). As sessões abertas dele serão encerradas.`),
-      h('div.campo', {}, h('label.campo__rotulo', {}, 'Nova senha'), nova, h('span.campo__dica', {}, 'Anote e informe ao usuário — não é possível consultar depois.')),
+      h('div.campo', {}, h('label.campo__rotulo', {}, 'Nova senha'), nova, h('span.campo__dica', {}, 'Informe ao usuário. Depois de salvar, a senha fica visível na coluna "Senha" desta lista.')),
       h('div.grupo-botoes', {}, botaoGerar, botaoCopiar),
     );
     const modal = abrirModal({

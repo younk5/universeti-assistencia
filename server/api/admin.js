@@ -7,6 +7,7 @@ import {
   buscarUsuario,
   listarTecnicos,
   excluirUsuario,
+  obterSenhaUsuario,
 } from '../services/usuarios.js';
 import { exigirTexto, exigirLogin, exigirTelefone, exigirEnum, exigirNumero } from '../utils.js';
 import { exigirAutenticacao, exigirPermissao, escopoRede, acessoTotal } from '../auth.js';
@@ -139,6 +140,20 @@ export function registrar(rota) {
       ativo: ctx.corpo.ativo,
     });
     return { usuario, mensagem: `Usuário "${alvo.nome}" atualizado.` };
+  });
+
+  rota.get('/api/usuarios/:id/senha', async (ctx) => {
+    exigirAdmin(ctx.usuario);
+    const id = Number(ctx.params.id);
+    const alvo = await buscarUsuario(id);
+    const senha = await obterSenhaUsuario(id);
+    return {
+      id,
+      nome: alvo.nome,
+      senha,
+      disponivel: Boolean(senha),
+      mensagem: senha ? null : 'Esta senha foi cadastrada antes do recurso de consulta. Redefina-a para que fique visível.',
+    };
   });
 
   rota.post('/api/usuarios/:id/senha', async (ctx) => {

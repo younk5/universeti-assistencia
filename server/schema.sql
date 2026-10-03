@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nome       TEXT    NOT NULL,
   email      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
   senha_hash TEXT    NOT NULL,
+  -- Cópia cifrada (AES-256-GCM) da senha, para admin/técnico consultarem.
+  -- Fica NULL para senhas cadastradas antes deste recurso.
+  senha_cifrada TEXT,
   papel      TEXT    NOT NULL CHECK (papel IN ('atendente', 'tecnico', 'admin')),
   loja_id    INTEGER REFERENCES lojas(id) ON DELETE RESTRICT,
   telefone   TEXT,

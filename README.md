@@ -242,7 +242,7 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
 ### Modelo de dados
 
 - **lojas** — id, codigo, nome, endereco, telefone, ativo
-- **usuarios** — id, nome, email, senha_hash, papel, loja_id, telefone, ativo
+- **usuarios** — id, nome, email, senha_hash, senha_cifrada (AES-256-GCM, para consulta pela gestão), papel, loja_id, telefone, ativo
 - **ordens_servico** — numero_os, loja_id, dados do cliente e do aparelho,
   defeito, estado, status, valor, técnico, marcos de tempo
 - **fotos_os** — os_id, tipo (entrada/saída/retirada/assinatura), arquivo, autor
@@ -287,6 +287,7 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
 | `HOST` | `0.0.0.0` | Interface de escuta (permite acesso pelo celular) |
 | `DATA_DIR` | `./data` | Pasta do banco SQLite e das fotos |
 | `SESSION_SECRET` | `troque-este-segredo-em-producao` | Segredo do HMAC dos tokens |
+| `SENHA_SECRET` | valor de `SESSION_SECRET` | Chave que cifra as senhas consultáveis (AES-256-GCM). Defina uma própria e estável; trocá-la torna as senhas antigas ilegíveis |
 | `SESSION_TTL_DIAS` | `30` | Validade da sessão |
 | `ADMIN_NOME` | `UniverseTI` | Nome do admin criado quando o banco está vazio |
 | `ADMIN_EMAIL` | `universeti` | Login do admin inicial |

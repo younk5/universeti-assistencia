@@ -6,6 +6,7 @@ import {
   conferirSenha,
   gerarHashSenha,
   validarForcaSenha,
+  cifrarSenha,
 } from '../auth.js';
 import { definirCookie, limparCookie, exigirLogin, exigirTexto } from '../utils.js';
 import { ErroApp, invalido, naoAutenticado } from '../erros.js';
@@ -138,7 +139,12 @@ export function registrar(rota) {
       throw invalido('A senha atual informada está incorreta.', { campo: 'senhaAtual' });
     }
     if (atual === nova) throw invalido('A nova senha precisa ser diferente da atual.', { campo: 'novaSenha' });
-    await executar('UPDATE usuarios SET senha_hash = ? WHERE id = ?', gerarHashSenha(nova), ctx.usuario.id);
+    await executar(
+      'UPDATE usuarios SET senha_hash = ?, senha_cifrada = ? WHERE id = ?',
+      gerarHashSenha(nova),
+      cifrarSenha(nova),
+      ctx.usuario.id,
+    );
     return { ok: true, mensagem: 'Senha alterada com sucesso.' };
   });
 }

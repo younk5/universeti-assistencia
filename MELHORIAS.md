@@ -194,4 +194,21 @@ curl -s https://universeti-teste.vercel.app/api/health
   em **Gestão → Usuários → Redefinir senha** (com botão de gerar senha forte e
   copiar). O servidor recusa a troca pelo próprio atendente (403).
 
+## Atualização: admin/técnico consultam a senha dos usuários
+
+- Na aba **Gestão → Usuários** há a coluna **Senha**. Admin e técnico clicam no
+  ícone de olho e veem a senha daquele usuário (com opção de ocultar).
+- Endpoint `GET /api/usuarios/:id/senha`, restrito a admin/técnico (o atendente
+  recebe 403).
+- **Como funciona:** a senha continua sendo guardada com hash scrypt para o
+  login e, além disso, uma cópia **cifrada com AES-256-GCM** (`usuarios.senha_cifrada`)
+  é gravada para permitir a consulta. A chave vem de `SENHA_SECRET` (ou
+  `SESSION_SECRET` como reserva).
+- **Senhas antigas:** as que existiam antes deste recurso não são recuperáveis
+  (só havia hash) e aparecem como "—". Redefina uma vez para que fiquem visíveis.
+- **Atenção de segurança:** este é um acesso deliberado da gestão às senhas.
+  Quem tiver a chave do servidor **e** o banco consegue ler todas elas. Mantenha
+  `SENHA_SECRET` estável e protegida (não a troque sem necessidade — isso
+  invalida as senhas cifradas).
+
 
