@@ -186,6 +186,9 @@ const COLUNAS_INCREMENTAIS = {
     ['garantia_dias', 'INTEGER'],
     ['garantia_ate', 'TEXT'],
     ['garantia_de_os_id', 'INTEGER'],
+    // Número anterior da OS (quando a loja é corrigida e o número acompanha a
+    // nova loja) — mantém válidos os links/QR de rastreio já enviados.
+    ['numero_os_anterior', 'TEXT'],
   ],
 };
 
@@ -232,12 +235,12 @@ export async function aplicarMigracoes(atual) {
 }
 
 /**
- * O nome do cliente e a loja de entrada passaram a ser editáveis por
- * admin/técnico (com registro no histórico). `CREATE TRIGGER IF NOT EXISTS`
- * não substitui um trigger existente, então as versões antigas — que
- * abortavam a troca do nome e da loja — precisam ser recriadas nos bancos
- * que já existiam. O marcador é a mensagem de bloqueio da loja, presente em
- * todas as versões anteriores.
+ * O nome do cliente, a loja de entrada e o número da OS (que acompanha a
+ * loja) passaram a ser ajustáveis pelo fluxo auditado. `CREATE TRIGGER IF NOT
+ * EXISTS` não substitui um trigger existente, então as versões antigas —
+ * que abortavam a troca do número — precisam ser recriadas nos bancos que já
+ * existiam. O marcador é a mensagem de bloqueio do número, presente em todas
+ * as versões anteriores.
  */
 async function recriarTriggerCamposOS(atual) {
   let sql = '';
@@ -249,7 +252,7 @@ async function recriarTriggerCamposOS(atual) {
   } catch {
     return; // driver sem sqlite_master: o schema novo já cuida de bancos vazios
   }
-  if (!sql || !/loja de entrada da OS nao pode ser alterada/i.test(sql)) return;
+  if (!sql || !/numero da OS nao pode ser alterado/i.test(sql)) return;
 
   try {
     await atual.executar('DROP TRIGGER IF EXISTS trg_os_campos_imutaveis');
@@ -258,15 +261,13 @@ async function recriarTriggerCamposOS(atual) {
       BEFORE UPDATE ON ordens_servico
       BEGIN
         SELECT CASE
-          WHEN OLD.numero_os <> NEW.numero_os
-            THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
           WHEN OLD.criado_em <> NEW.criado_em
             THEN RAISE(ABORT, 'A data de criacao da OS nao pode ser alterada.')
           WHEN OLD.status = 'retirado' AND NEW.status <> 'retirado'
             THEN RAISE(ABORT, 'Uma OS ja retirada nao pode mudar de status.')
         END;
       END`);
-    console.log('[migração] trigger de campos da OS atualizado (edição de dados e da loja com auditoria).');
+    console.log('[migração] trigger de campos da OS atualizado (edição de dados, loja e número com auditoria).');
   } catch (erro) {
     console.warn('[migração] falhou ao recriar o trigger de campos da OS:', erro?.message ?? erro);
   }

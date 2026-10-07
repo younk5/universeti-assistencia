@@ -218,9 +218,11 @@ curl -s https://universeti-teste.vercel.app/api/health
   WhatsApp do cliente, **loja de entrada**, marca, modelo, cor, IMEI,
   acessórios, defeito relatado, estado do aparelho e o valor do serviço. Cada
   mudança real vira um evento `edicao` no histórico com o valor **antes →
-  depois** e o autor (a troca de loja é registrada com os nomes das lojas).
-  O número da OS e a data de criação seguem imutáveis, e a migração automática
-  libera o nome do cliente e a loja de entrada para o fluxo auditado.
+  depois** e o autor. **Ao trocar a loja, o número da OS é renumerado para a
+  loja de destino** (o número antigo fica em `numero_os_anterior`, continua
+  achando a OS na busca e no rastreio do cliente). A data de criação segue
+  imutável, e a migração automática libera nome do cliente, loja e número para
+  o fluxo auditado.
 - **Foto da galeria no celular**: a área de anexo agora tem dois botões —
   **Tirar foto** (câmera traseira, como antes) e **Foto ou vídeo da galeria**
   (rolete de fotos e vídeos, sem o atributo `capture`). Vale para entrada,

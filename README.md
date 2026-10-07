@@ -142,12 +142,14 @@ BEGIN
 END;
 ```
 
-Além disso, o número da OS e a data de criação não podem ser alterados depois
-do cadastro, e uma OS já retirada não volta para trás. Os demais dados
-cadastrais — inclusive a **loja de entrada** — podem ser corrigidos por
-admin/técnico no botão **Editar dados**: cada mudança vira um evento “Dados
-atualizados” no histórico, com o valor anterior e o novo. O nome do cliente
-também é editável por esse caminho auditado.
+Além disso, a data de criação não pode ser alterada depois do cadastro, e uma
+OS já retirada não volta para trás. Os demais dados cadastrais — inclusive a
+**loja de entrada** — podem ser corrigidos por admin/técnico no botão **Editar
+dados**: cada mudança vira um evento “Dados atualizados” no histórico, com o
+valor anterior e o novo. Ao trocar de loja, **o número da OS acompanha a loja
+de destino** (ex.: `GUA-0001` → `CUM-0006`); o número antigo fica registrado no
+histórico e continua válido no rastreio do cliente e na busca. O nome do
+cliente também é editável por esse caminho auditado.
 
 ---
 
@@ -194,7 +196,9 @@ também é editável por esse caminho auditado.
   requisições `Range` (206) para tocar no Safari/iOS.
 - **Editar dados da OS**: correção de cliente, aparelho, defeito, valor e
   **loja de entrada** por admin/técnico, com registro “antes → depois” na
-  trilha de auditoria.
+  trilha de auditoria. Ao trocar de loja, o número da OS passa para a
+  numeração da loja de destino (o número antigo segue no histórico, na busca e
+  no rastreio do cliente).
 - **Etiqueta e comprovante em PDF** (gerados no navegador, sem dependências): a
   etiqueta traz a marca, o número da OS em destaque, os dados do cliente e do
   aparelho, o defeito e o código de barras Code 128; o comprovante sai em A4 com
@@ -264,7 +268,8 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
 
 - **lojas** — id, codigo, nome, endereco, telefone, ativo
 - **usuarios** — id, nome, email, senha_hash, senha_cifrada (AES-256-GCM, para consulta pela gestão), papel, loja_id, telefone, ativo
-- **ordens_servico** — numero_os, loja_id, dados do cliente e do aparelho,
+- **ordens_servico** — numero_os (+ numero_os_anterior quando a loja é
+  corrigida), loja_id, dados do cliente e do aparelho,
   defeito, estado, status, valor, técnico, marcos de tempo
 - **fotos_os** — os_id, tipo (entrada/saída/retirada/assinatura), arquivo, autor
 - **eventos_os** — trilha de auditoria (tipo, status anterior/novo, autor, data)

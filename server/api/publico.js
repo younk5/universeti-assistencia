@@ -45,15 +45,31 @@ export function registrar(rota) {
       throw invalido('Informe os 4 últimos dígitos do WhatsApp cadastrado.', { campo: 'tel' });
     }
 
-    const os = await consultarUm(
-      `SELECT o.id, o.numero_os, o.status, o.marca, o.modelo, o.cor, o.criado_em, o.concluido_em,
+    const CAMPOS_PUBLICOS = `o.id, o.numero_os, o.status, o.marca, o.modelo, o.cor, o.criado_em, o.concluido_em,
               o.retirado_em, o.garantia_ate, o.orcamento_status, o.orcamento_valor,
-              o.cliente_telefone, l.nome AS loja_nome, l.telefone AS loja_telefone
+              o.cliente_telefone, l.nome AS loja_nome, l.telefone AS loja_telefone`;
+
+    let os = await consultarUm(
+      `SELECT ${CAMPOS_PUBLICOS}
          FROM ordens_servico o
          LEFT JOIN lojas l ON l.id = o.loja_id
         WHERE o.numero_os = ?`,
       numero,
     );
+
+    // Número antigo: a OS trocou de loja e foi renumerada — o link/QR já
+    // enviado ao cliente continua funcionando.
+    if (!os) {
+      os = await consultarUm(
+        `SELECT ${CAMPOS_PUBLICOS}
+           FROM ordens_servico o
+           LEFT JOIN lojas l ON l.id = o.loja_id
+          WHERE o.numero_os_anterior = ?
+          ORDER BY o.id DESC
+          LIMIT 1`,
+        numero,
+      );
+    }
 
     // Sem revelar se o número existe: a mesma mensagem para OS inexistente e
     // telefone que não bate evita varredura de números de OS.

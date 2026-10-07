@@ -441,6 +441,7 @@ try {
     'seletor de loja lista as lojas e já vem com a loja atual marcada',
     JSON.stringify(lojaNoModal),
   );
+  ok(modalEdicao.includes('acompanha a loja de destino'), 'modal avisa que o número acompanha a loja ao trocar');
   ok(modalEdicao.includes('fica registrada no histórico'), 'modal avisa que a alteração fica auditada');
 
   const resultadoEdicao = await avaliar(`(async () => {

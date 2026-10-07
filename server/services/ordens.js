@@ -245,6 +245,9 @@ export async function editarOS(osId, usuario, dados) {
 
     // Loja de entrada: validada contra o cadastro e registrada com os nomes
     // (o histórico precisa ser legível — "Centro → Cumbica", não "1 → 2").
+    // O número da OS acompanha a loja: ganha o código da loja de destino e a
+    // próxima sequência livre; o número antigo fica guardado (histórico e
+    // rastreio do cliente continuam funcionando).
     if (dados.lojaId !== undefined) {
       const destinoId = Number(dados.lojaId);
       if (destinoId !== Number(os.loja_id)) {
@@ -253,6 +256,13 @@ export async function editarOS(osId, usuario, dados) {
         const origem = await conexao.get('SELECT nome FROM lojas WHERE id = ?', [os.loja_id]);
         atribuicoes.loja_id = destino.id;
         mudancas.push(`Loja de entrada: ${resumirValor(origem?.nome ?? `#${os.loja_id}`)} → ${resumirValor(destino.nome)}`);
+
+        const novoNumero = await gerarNumeroOS(conexao, destino.id);
+        if (novoNumero !== os.numero_os) {
+          atribuicoes.numero_os = novoNumero;
+          atribuicoes.numero_os_anterior = os.numero_os;
+          mudancas.push(`Número da OS: ${os.numero_os} → ${novoNumero}`);
+        }
       }
     }
 
@@ -296,9 +306,15 @@ export async function buscarOS(osId, usuario, { conexao = null } = {}) {
 }
 
 export async function buscarOSPorNumero(numeroOS, usuario) {
+  const numero = String(numeroOS).toUpperCase();
+  // Aceita também o número antigo de uma OS renumerada (troca de loja).
   const os = await consultarUm(
-    `SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.numero_os = ?`,
-    String(numeroOS).toUpperCase(),
+    `SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.numero_os = ? OR o.numero_os_anterior = ?
+      ORDER BY CASE WHEN o.numero_os = ? THEN 0 ELSE 1 END, o.id DESC
+      LIMIT 1`,
+    numero,
+    numero,
+    numero,
   );
   if (!os) throw naoEncontrado('Ordem de serviço não encontrada.');
   if (!escopoRede(usuario) && Number(os.loja_id) !== Number(usuario.lojaId)) {
@@ -446,12 +462,13 @@ export function montarFiltros({ usuario, lojaId, status, tecnicoId, busca, de, a
     const digitos = String(busca).replace(/\D/g, '');
     const partes = [
       'lower(o.numero_os) LIKE ?',
+      'lower(o.numero_os_anterior) LIKE ?',
       'lower(o.cliente_nome) LIKE ?',
       'lower(o.modelo) LIKE ?',
       'lower(o.marca) LIKE ?',
       'lower(o.imei) LIKE ?',
     ];
-    params.push(termo, termo, termo, termo, termo);
+    params.push(termo, termo, termo, termo, termo, termo);
     // Telefone só entra na busca quando o termo tem dígitos; caso contrário
     // "LIKE '%%'" traria todos os registros e a busca perderia o sentido.
     if (digitos) {

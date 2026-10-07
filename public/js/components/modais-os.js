@@ -469,14 +469,18 @@ export function modalEditarOS({ ordem, aoConcluir }) {
       },
     },
     erro,
-    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. O número da OS e a data de entrada não mudam.'),
+    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. A data de entrada não muda; ao trocar de loja, o número da OS acompanha a loja de destino.'),
     h(
       'div.formulario__linha.formulario__linha--2',
       {},
       campo('Nome do cliente *', clienteNome),
       campo('WhatsApp *', clienteTelefone),
     ),
-    seletorLoja ? campo('Loja de entrada *', seletorLoja, { dica: 'Corrige a loja em que a OS entrou — o número da OS continua igual.' }) : null,
+    seletorLoja
+      ? campo('Loja de entrada *', seletorLoja, {
+          dica: 'Ao trocar a loja, o número da OS passa para a numeração da loja de destino (ex.: GUA-0001 → CUM-0006) e o número antigo fica no histórico.',
+        })
+      : null,
     h(
       'div.formulario__linha.formulario__linha--2',
       {},
