@@ -40,7 +40,7 @@ const CABECALHOS_SEGURANCA = {
     "media-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://vercel.com https://*.blob.vercel-storage.com",
     "font-src 'self' data:",
     "form-action 'self'",
     "base-uri 'self'",
@@ -284,12 +284,33 @@ export async function tratarRequisicao(req, res, { servirEstaticos = true } = {}
 
   const dados = await encontrada.handler(ctx);
 
-  if (ctx.arquivo) {
-    res.writeHead(200, {
-      'Content-Type': ctx.arquivo.mime,
-      'Content-Length': ctx.arquivo.conteudo.length,
-      'Cache-Control': 'private, max-age=86400',
+  if (ctx.faixaInvalida) {
+    // Range fora dos limites do arquivo: pedido explícito de "não satisfaz".
+    res.writeHead(416, {
+      'Content-Range': `bytes */${ctx.totalAnexo ?? 0}`,
+      'Accept-Ranges': 'bytes',
     });
+    res.end();
+    return;
+  }
+
+  if (ctx.arquivo) {
+    const cabecalhos = {
+      'Content-Type': ctx.arquivo.mime,
+      'Cache-Control': 'private, max-age=86400',
+      // Necessário para o player de vídeo (Safari/iOS pede trechos do arquivo).
+      'Accept-Ranges': 'bytes',
+    };
+    if (ctx.arquivo.faixa && ctx.arquivo.conteudo) {
+      const total = ctx.totalAnexo ?? ctx.arquivo.conteudo.length;
+      cabecalhos['Content-Range'] = `bytes ${ctx.arquivo.faixa.inicio}-${ctx.arquivo.faixa.inicio + ctx.arquivo.conteudo.length - 1}/${total}`;
+      cabecalhos['Content-Length'] = ctx.arquivo.conteudo.length;
+      res.writeHead(206, cabecalhos);
+      res.end(ctx.arquivo.conteudo);
+      return;
+    }
+    cabecalhos['Content-Length'] = ctx.arquivo.conteudo.length;
+    res.writeHead(200, cabecalhos);
     res.end(ctx.arquivo.conteudo);
     return;
   }

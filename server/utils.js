@@ -202,3 +202,36 @@ export function telefoneParaWhatsapp(telefone) {
 export function gerarToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
+
+/* -------------------------------------------------------------------------- */
+/* Requisições Range (vídeo)                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Interpreta o cabeçalho `Range` para um arquivo de `tamanho` bytes.
+ * Retorna:
+ *   • null              — sem cabeçalho (ou formato não suportado): resposta 200 completa;
+ *   • { inicio, fim }   — faixa satisfazível (fim inclusivo);
+ *   • { invalida: true }— faixa fora dos limites: responder 416.
+ * Apenas a primeira faixa é considerada (suficiente para o player nativo).
+ */
+export function analisarFaixa(cabecalho, tamanho) {
+  const texto = String(cabecalho ?? '').trim();
+  if (!texto || !Number.isFinite(tamanho) || tamanho <= 0) return null;
+  const casamento = /^bytes=(\d*)-(\d*)$/.exec(texto);
+  if (!casamento) return null;
+  const [, inicioBruto, fimBruto] = casamento;
+  if (inicioBruto === '' && fimBruto === '') return null;
+
+  if (inicioBruto === '') {
+    // Sufixo: "bytes=-500" → últimos 500 bytes.
+    const quantidade = Number(fimBruto);
+    if (!Number.isFinite(quantidade) || quantidade <= 0) return { invalida: true };
+    return { inicio: Math.max(0, tamanho - quantidade), fim: tamanho - 1 };
+  }
+
+  const inicio = Number(inicioBruto);
+  const fim = fimBruto === '' ? tamanho - 1 : Math.min(Number(fimBruto), tamanho - 1);
+  if (inicio >= tamanho || inicio > fim) return { invalida: true };
+  return { inicio, fim };
+}

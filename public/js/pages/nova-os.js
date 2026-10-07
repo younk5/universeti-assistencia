@@ -3,23 +3,16 @@ import { icone } from '../icons.js';
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { criarCaptura } from '../components/captura.js';
+import { enviarAnexo } from '../anexos.js';
 import { abrirModal, ocupado, toastErro, toastSucesso, faixaErro, badgeStatus } from '../ui.js';
 import { baixarEtiquetaPdf } from '../etiqueta.js';
-import { telefone as formatarTelefone } from '../format.js';
+import { telefone as formatarTelefone, mascararTelefone } from '../format.js';
 import { criarAssinatura } from '../assinatura.js';
 import { recortarAssinatura } from '../image.js';
 import { CHECKLIST_ITENS, ROTULOS_SENHA } from '../constantes.js';
 import { criarPadrao } from '../padrao.js';
 
 const RASCUNHO = 'tecnoflow.rascunho-os';
-
-function mascararTelefone(valor) {
-  const digitos = String(valor ?? '').replace(/\D/g, '').slice(0, 11);
-  if (digitos.length <= 2) return digitos;
-  if (digitos.length <= 6) return `(${digitos.slice(0, 2)}) ${digitos.slice(2)}`;
-  if (digitos.length <= 10) return `(${digitos.slice(0, 2)}) ${digitos.slice(2, 6)}-${digitos.slice(6)}`;
-  return `(${digitos.slice(0, 2)}) ${digitos.slice(2, 7)}-${digitos.slice(7)}`;
-}
 
 export function paginaNovaOS(container) {
   const lojas = store.meta?.lojas ?? [];
@@ -88,8 +81,8 @@ export function paginaNovaOS(container) {
   checklist.senhaInformada.addEventListener('change', sincronizarSenha);
 
   const capturaEntrada = criarCaptura({
-    titulo: 'Foto do aparelho na entrada (obrigatória)',
-    dica: 'Registre o estado em que o aparelho chegou. Sem esta foto não é possível registrar a OS.',
+    titulo: 'Foto ou vídeo do aparelho na entrada (obrigatório)',
+    dica: 'Registre o estado em que o aparelho chegou — foto tirada agora, arquivo da galeria ou um vídeo curto. Sem esta evidência não é possível registrar a OS.',
     legendaFoto: 'Estado do aparelho na entrada',
   });
 
@@ -240,7 +233,7 @@ export function paginaNovaOS(container) {
       h(
         'div.card__cabecalho',
         {},
-        h('h3', {}, 'Foto de entrada'),
+        h('h3', {}, 'Foto ou vídeo de entrada'),
         h('span.texto-mini.texto-suave', {}, 'Evidência do estado inicial'),
       ),
       h('div.card__corpo', {}, capturaEntrada.elemento),
@@ -329,7 +322,7 @@ export function paginaNovaOS(container) {
     if (!campos.marca.value.trim()) faltando.push('marca');
     if (!campos.modelo.value.trim()) faltando.push('modelo');
     if (defeito.length < 3) faltando.push('defeito relatado');
-    if (!capturaEntrada.temFoto()) faltando.push('foto de entrada');
+    if (!capturaEntrada.temArquivo()) faltando.push('foto ou vídeo de entrada');
     if (assinaturaEntrada.estaVazio()) faltando.push('assinatura do cliente no termo');
     if (checklist.senhaInformada.checked) {
       if (!valorSenha()) faltando.push('a senha do aparelho (marcou que o cliente informou)');
@@ -362,17 +355,14 @@ export function paginaNovaOS(container) {
       const ordem = resposta.ordem;
 
       let avisoFoto = null;
-      if (capturaEntrada.temFoto()) {
-        montar(areaErro, h('div.faixa-aviso', {}, icone('alerta', { tamanho: 18 }), h('span', {}, 'Salvando foto de entrada…')));
+      if (capturaEntrada.temArquivo()) {
+        montar(areaErro, h('div.faixa-aviso', {}, icone('alerta', { tamanho: 18 }), h('span', {}, 'Salvando o anexo de entrada…')));
         areaErro.classList.remove('oculto');
-        try {
-          const arquivo = capturaEntrada.obterArquivo();
-          await api.enviarArquivo(`/api/ordens/${ordem.id}/fotos`, arquivo.blob, {
-            params: { tipo: 'entrada', legenda: arquivo.legenda ?? 'Estado do aparelho na entrada' },
-          });
-        } catch (erroFoto) {
-          avisoFoto = erroFoto.message;
-        }
+        const arquivoEntrada = capturaEntrada.obterArquivo();
+        avisoFoto = await enviarAnexo(ordem.id, arquivoEntrada, {
+          tipo: 'entrada',
+          legenda: arquivoEntrada.legenda ?? 'Estado do aparelho na entrada',
+        });
         areaErro.classList.add('oculto');
       }
 
@@ -411,7 +401,7 @@ export function paginaNovaOS(container) {
       'div.pilha',
       {},
       avisoFoto
-        ? h('div.faixa-aviso', {}, icone('alerta', { tamanho: 18 }), h('span', {}, `A OS foi salva, mas a foto falhou: ${avisoFoto}. Abra a OS e anexe a foto novamente.`))
+        ? h('div.faixa-aviso', {}, icone('alerta', { tamanho: 18 }), h('span', {}, `A OS foi salva, mas o anexo falhou: ${avisoFoto}. Abra a OS e anexe novamente.`))
         : null,
       h(
         'div.card.card--plana',

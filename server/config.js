@@ -20,6 +20,10 @@ export const config = {
   senhaSecret: env('SENHA_SECRET', env('SESSION_SECRET', 'troque-este-segredo-em-producao')),
   sessionTtlDias: Number(env('SESSION_TTL_DIAS', 30)),
   maxUploadBytes: 6 * 1024 * 1024,
+  // Vídeos não passam por compressão no cliente — o limite é separado e maior.
+  // No modo Blob (Vercel) o vídeo sobe direto do navegador para o storage,
+  // então este é o teto real em qualquer modo.
+  maxVideoBytes: Math.max(1, Number(env('VIDEO_MAX_MB', 128))) * 1024 * 1024,
   ambiente: env('NODE_ENV', 'development'),
 };
 

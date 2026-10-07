@@ -102,6 +102,15 @@ function png1x1() {
   ]);
 }
 
+/** MP4 mínimo (com a caixa `ftyp`) para exercitar upload e Range de vídeo. */
+function mp4Falso() {
+  const cabecalho = Buffer.alloc(32);
+  cabecalho.writeUInt32BE(24, 0);
+  cabecalho.write('ftypisom', 4, 'ascii');
+  cabecalho.write('isommp42', 12, 'ascii');
+  return Buffer.concat([cabecalho, Buffer.alloc(96, 0xab)]);
+}
+
 async function prepararUsuarios() {
   await carregarDriver();
   const agora = new Date().toISOString();
@@ -193,6 +202,51 @@ try {
   r = await api('GET', `/api/fotos/${fotoId}/raw`);
   ok(r.status === 200 && r.dados?.length > 0, 'download da foto autenticado funciona');
 
+  titulo('Vídeo anexado e requisições Range');
+  const mp4 = mp4Falso();
+  r = await api('POST', `/api/ordens/${osId}/fotos?tipo=saida`, mp4, {
+    headers: { 'Content-Type': 'video/mp4' },
+  });
+  ok(r.status === 201 && r.dados.foto?.mime === 'video/mp4', 'upload de vídeo MP4 (201)', JSON.stringify(r.dados).slice(0, 160));
+  const videoId = r.dados.foto?.id;
+
+  r = await api('POST', `/api/ordens/${osId}/fotos?tipo=saida`, Buffer.from('isto não é um vídeo'), {
+    headers: { 'Content-Type': 'video/mp4' },
+  });
+  ok(r.status === 422, 'arquivo que não é vídeo é rejeitado (422)', `status=${r.status}`);
+
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.fotos.some((f) => f.id === videoId && f.mime === 'video/mp4'), 'vídeo aparece na lista de anexos da OS');
+
+  const respostaRange = await fetch(`${base}/api/fotos/${videoId}/raw`, {
+    headers: { Cookie: cookie, Range: 'bytes=0-1' },
+  });
+  const trecho = Buffer.from(await respostaRange.arrayBuffer());
+  ok(respostaRange.status === 206, 'requisição Range responde 206 (parcial)', `status=${respostaRange.status}`);
+  ok(
+    respostaRange.headers.get('content-range') === `bytes 0-1/${mp4.length}`,
+    'Content-Range aponta o trecho pedido',
+    respostaRange.headers.get('content-range'),
+  );
+  ok(
+    Boolean(trecho.length === 2 && trecho[0] === mp4[0] && trecho[1] === mp4[1]) &&
+      respostaRange.headers.get('accept-ranges') === 'bytes',
+    'trecho devolvido corresponde aos bytes do arquivo',
+  );
+
+  const respostaFora = await fetch(`${base}/api/fotos/${videoId}/raw`, {
+    headers: { Cookie: cookie, Range: `bytes=${mp4.length + 10}-` },
+  });
+  ok(respostaFora.status === 416, 'Range fora do arquivo responde 416', `status=${respostaFora.status}`);
+
+  const respostaImagemRange = await fetch(`${base}/api/fotos/${fotoId}/raw`, {
+    headers: { Cookie: cookie, Range: 'bytes=1-2' },
+  });
+  ok(respostaImagemRange.status === 206, 'foto também aceita Range (206)', `status=${respostaImagemRange.status}`);
+
+  r = await api('POST', '/api/anexos/blob', { type: 'blob.generate-client-token', payload: { pathname: `fotos/${osId}/x.mp4` } });
+  ok(r.status === 422, 'upload direto ao Blob é recusado no modo local (422)', `status=${r.status}`);
+
   titulo('Fluxo técnico');
   r = await api('POST', `/api/ordens/${osId}/finalizar`, { servicoRealizado: 'teste indevido' });
   ok(r.status === 403, 'atendente não pode finalizar OS (403)', `status=${r.status}`);
@@ -251,6 +305,62 @@ try {
     ['os.retirar', 'os.criar', 'admin.lojas', 'admin.usuarios'].every((p) => r.dados.permissoes?.includes(p)),
     'técnico tem as mesmas permissões do administrador',
     JSON.stringify(r.dados.permissoes),
+  );
+  ok(r.dados.permissoes?.includes('os.editar'), 'permissão de editar dados da OS existe para técnico/admin');
+
+  titulo('Edição de dados da OS (auditável)');
+  const antesEdicao = await api('GET', `/api/ordens/${osId}`);
+  r = await api('PATCH', `/api/ordens/${osId}`, {
+    clienteNome: 'Cliente Smoke Editado',
+    clienteTelefone: '(11) 99888-7766',
+    marca: 'Apple',
+    modelo: 'iPhone 13 Pro',
+    cor: 'Azul',
+    acessorios: 'capa e carregador',
+    defeitoRelatado: 'Tela trincada após queda (relato corrigido)',
+    estadoAparelho: 'Tela trincada, carcaça sem marcas',
+  });
+  ok(r.status === 200, 'admin/técnico edita os dados da OS (200)', JSON.stringify(r.dados).slice(0, 200));
+  ok(Number(r.dados.ordem?.id) === Number(osId), 'edição devolve a OS atualizada');
+  ok(r.dados.ordem?.cliente_nome === 'Cliente Smoke Editado', 'nome do cliente corrigido');
+  ok(r.dados.ordem?.cliente_telefone === '(11) 99888-7766', 'telefone corrigido');
+  ok(r.dados.ordem?.modelo === 'iPhone 13 Pro', 'modelo corrigido');
+  ok(r.dados.ordem?.numero_os === antesEdicao.dados.ordem.numero_os, 'número da OS não muda na edição');
+  ok(Number(r.dados.ordem?.loja_id) === Number(antesEdicao.dados.ordem.loja_id), 'loja de entrada não muda na edição');
+  ok(r.dados.ordem?.criado_em === antesEdicao.dados.ordem.criado_em, 'data de criação não muda na edição');
+  ok(Array.isArray(r.dados.alteracoes) && r.dados.alteracoes.length >= 5, 'resposta lista as alterações feitas', JSON.stringify(r.dados.alteracoes).slice(0, 200));
+
+  const aposEdicao = await api('GET', `/api/ordens/${osId}`);
+  const eventosEdicao = aposEdicao.dados.eventos.filter((e) => e.tipo_evento === 'edicao');
+  ok(eventosEdicao.length === 1, 'edição entra na trilha de auditoria', String(eventosEdicao.length));
+  ok(
+    /Nome do cliente: .*Cliente Smoke Test.*→.*Cliente Smoke Editado/.test(eventosEdicao[0]?.descricao ?? ''),
+    'evento guarda o antes → depois do que mudou',
+    String(eventosEdicao[0]?.descricao).slice(0, 160),
+  );
+
+  r = await api('PATCH', `/api/ordens/${osId}`, { valor: 512.9 });
+  ok(r.status === 200 && Number(r.dados.ordem?.valor) === 512.9, 'valor do serviço pode ser ajustado na edição');
+
+  r = await api('PATCH', `/api/ordens/${osId}`, { status: 'cancelado' });
+  ok(r.status === 422, 'edição não altera status (422)', `status=${r.status}`);
+
+  r = await api('PATCH', `/api/ordens/${osId}`, {});
+  ok(r.status === 422, 'edição sem campos é recusada (422)', `status=${r.status}`);
+
+  await api('POST', '/api/auth/login', { email: 'atendente@teste.com', senha: 'Teste@123' });
+  r = await api('PATCH', `/api/ordens/${osId}`, { modelo: 'Sem permissão' });
+  ok(r.status === 403, 'atendente não edita dados da OS (403)', `status=${r.status}`);
+  r = await api('GET', `/api/ordens/${osId}`);
+  ok(r.dados.ordem?.modelo === 'iPhone 13 Pro', 'edição tentada pelo atendente não altera nada');
+  await api('POST', '/api/auth/login', { email: 'tecnico@teste.com', senha: 'Teste@123' });
+
+  // Restaura telefone e valor usados pelos testes seguintes (rastreio pelo
+  // final do telefone e busca por dígitos) — a restauração também é auditada.
+  r = await api('PATCH', `/api/ordens/${osId}`, { clienteTelefone: '(11) 91234-5678', valor: 480.5 });
+  ok(
+    r.status === 200 && r.dados.ordem?.cliente_telefone === '(11) 91234-5678' && Number(r.dados.ordem?.valor) === 480.5,
+    'valores restaurados para os testes seguintes (também com auditoria)',
   );
 
   titulo('Retirada (atendente) e auditoria');

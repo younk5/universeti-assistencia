@@ -5,8 +5,9 @@ import { abrirModal, ocupado, toastSucesso, toastErro, faixaAviso } from '../ui.
 import { criarCaptura } from './captura.js';
 import { criarAssinatura } from '../assinatura.js';
 import { recortarAssinatura, formatarBytes } from '../image.js';
-import { moeda, telefone as formatarTelefone } from '../format.js';
-import { ROTULOS_TIPO_FOTO } from '../constantes.js';
+import { enviarAnexo } from '../anexos.js';
+import { moeda, telefone as formatarTelefone, mascararTelefone } from '../format.js';
+import { ROTULOS_TIPO_FOTO, ehVideoMime } from '../constantes.js';
 import { qrImagem } from '../qr.js';
 
 function campo(rotulo, elemento, { dica = null, opcional = false } = {}) {
@@ -23,17 +24,11 @@ function linhaErro() {
   return h('div.oculto');
 }
 
+/** Envia o anexo escolhido na captura (foto comprimida ou vídeo direto). */
 async function enviarFoto(ordemId, captura, tipo, legenda) {
-  if (!captura?.temFoto()) return null;
-  const arquivo = captura.obterArquivo();
-  try {
-    await api.enviarArquivo(`/api/ordens/${ordemId}/fotos`, arquivo.blob, {
-      params: { tipo, legenda: arquivo.legenda ?? legenda },
-    });
-    return null;
-  } catch (erro) {
-    return erro.message;
-  }
+  const arquivo = captura?.obterArquivo?.();
+  if (!arquivo) return null;
+  return enviarAnexo(ordemId, arquivo, { tipo, legenda: arquivo.legenda ?? legenda });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -52,8 +47,8 @@ export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
   const observacoes = h('textarea.area-texto', { rows: 2, placeholder: 'Observações para o histórico (ex: cliente autorizou o valor por WhatsApp).' });
 
   const captura = criarCaptura({
-    titulo: 'Foto do aparelho pronto',
-    dica: 'Evidência do serviço concluído. Aparece no histórico da OS.',
+    titulo: 'Foto ou vídeo do aparelho pronto',
+    dica: 'Evidência do serviço concluído. Pode gravar um vídeo curto mostrando o aparelho funcionando.',
     legendaFoto: 'Aparelho após o reparo',
   });
 
@@ -83,14 +78,14 @@ export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
             observacoes: observacoes.value.trim() || null,
           });
           let aviso = null;
-          if (captura.temFoto()) {
-            montar(erro, faixaAviso('Enviando a foto do aparelho pronto…'));
+          if (captura.temArquivo()) {
+            montar(erro, faixaAviso('Enviando o anexo do aparelho pronto…'));
             erro.classList.remove('oculto');
             aviso = await enviarFoto(ordem.id, captura, 'saida', 'Aparelho após o reparo');
           }
           modal.fechar();
           toastSucesso(resposta.mensagem ?? 'Serviço concluído.', { titulo: 'OS pronta para retirada' });
-          if (aviso) toastErro(`A OS foi concluída, mas a foto falhou: ${aviso}`, { titulo: 'Foto não enviada' });
+          if (aviso) toastErro(`A OS foi concluída, mas o anexo falhou: ${aviso}`, { titulo: 'Anexo não enviado' });
           aoConcluir?.(resposta);
         } catch (e) {
           montar(erro, faixaAviso(e.message));
@@ -153,8 +148,8 @@ export function modalRetirarOS({ ordem, aoConcluir }) {
   );
 
   const captura = criarCaptura({
-    titulo: 'Foto da entrega',
-    dica: 'Opcional. Registra o aparelho sendo devolvido ao cliente.',
+    titulo: 'Foto ou vídeo da entrega',
+    dica: 'Opcional. Registra o aparelho sendo devolvido ao cliente — pode ser um vídeo curto.',
     legendaFoto: 'Comprovante de entrega',
   });
 
@@ -316,14 +311,20 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
   const tipos = ['entrada', 'saida', 'retirada'];
   const tipo = h('select.selecao', {}, ...tipos.map((t) => h('option', { value: t }, ROTULOS_TIPO_FOTO[t])));
   const legenda = h('input.entrada', { placeholder: 'Ex: detalhe do conector oxidado' });
-  const captura = criarCaptura({ titulo: 'Escolher ou tirar foto', dica: 'A imagem é comprimida antes do envio.' });
+  const captura = criarCaptura({
+    titulo: 'Foto ou vídeo do aparelho',
+    dica: 'Tire uma foto, grave um vídeo curto ou escolha um arquivo da galeria.',
+  });
   const erro = linhaErro();
   const botao = h('button.btn.btn--primario', { type: 'button', onclick: () => formulario.requestSubmit() }, icone('check', { tamanho: 16 }), 'Anexar na OS');
   const info = h('div.texto-mini.texto-fraco');
 
   captura.elemento.addEventListener('change', () => {
     const arquivo = captura.obterArquivo();
-    if (arquivo) info.textContent = `Tamanho final: ${formatarBytes(arquivo.bytes)}`;
+    if (!arquivo) return;
+    info.textContent = ehVideoMime(arquivo.mime)
+      ? `Vídeo: ${formatarBytes(arquivo.bytes)} · sem compressão`
+      : `Tamanho final: ${formatarBytes(arquivo.bytes)}`;
   });
 
   const formulario = h(
@@ -332,8 +333,8 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
       novalidate: true,
       onsubmit: async (evento) => {
         evento.preventDefault();
-        if (!captura.temFoto()) {
-          montar(erro, faixaAviso('Selecione uma foto antes de anexar.'));
+        if (!captura.temArquivo()) {
+          montar(erro, faixaAviso('Selecione uma foto ou vídeo antes de anexar.'));
           erro.classList.remove('oculto');
           return;
         }
@@ -342,7 +343,7 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
           const falha = await enviarFoto(ordem.id, captura, tipo.value, legenda.value.trim() || null);
           if (falha) throw new Error(falha);
           modal.fechar();
-          toastSucesso('Foto anexada ao histórico.');
+          toastSucesso('Anexo salvo no histórico da OS.');
           aoConcluir?.();
         } catch (e) {
           montar(erro, faixaAviso(e.message));
@@ -353,15 +354,131 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
       },
     },
     erro,
-    campo('Classificação da foto', tipo, { dica: 'Entrada, saída (após reparo) ou retirada (entrega).' }),
+    campo('Classificação do anexo', tipo, { dica: 'Entrada, saída (após reparo) ou retirada (entrega).' }),
     campo('Legenda', legenda, { opcional: true }),
     captura.elemento,
     info,
   );
 
   const modal = abrirModal({
-    titulo: 'Anexar foto',
+    titulo: 'Anexar foto ou vídeo',
     descricao: `OS ${ordem.numero_os}`,
+    corpo: formulario,
+    rodape: [
+      h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'),
+      botao,
+    ],
+  });
+  return modal;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Editar dados da OS                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Correção dos dados cadastrais da OS (admin/técnico). Cada mudança real vira
+ * um registro "antes → depois" na linha do tempo — loja, número e data de
+ * criação não estão aqui porque continuam imutáveis no banco.
+ */
+export function modalEditarOS({ ordem, aoConcluir }) {
+  const clienteNome = h('input.entrada', { value: ordem.cliente_nome ?? '', required: true });
+  const clienteTelefone = h('input.entrada', { type: 'tel', inputMode: 'tel', value: ordem.cliente_telefone ?? '', required: true });
+  const marca = h('input.entrada', { value: ordem.marca ?? '', required: true });
+  const modelo = h('input.entrada', { value: ordem.modelo ?? '', required: true });
+  const cor = h('input.entrada', { value: ordem.cor ?? '', placeholder: 'Opcional' });
+  const imei = h('input.entrada', { value: ordem.imei ?? '', placeholder: 'Opcional' });
+  const acessorios = h('input.entrada', { value: ordem.acessorios ?? '', placeholder: 'Ex: carregador, capa, cartão SIM' });
+  const defeitoRelatado = h('textarea.area-texto', { rows: 3, required: true, value: ordem.defeito_relatado ?? '' });
+  const estadoAparelho = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: tela trincada, traseira riscada.' });
+  estadoAparelho.value = ordem.estado_aparelho ?? '';
+  const valor = h('input.entrada', {
+    type: 'text',
+    inputMode: 'decimal',
+    placeholder: 'Ex: 350,00',
+    value: ordem.valor != null ? String(ordem.valor).replace('.', ',') : '',
+  });
+
+  clienteTelefone.addEventListener('input', (evento) => {
+    evento.target.value = mascararTelefone(evento.target.value);
+  });
+
+  const erro = linhaErro();
+  const botao = h('button.btn.btn--primario', { type: 'button', onclick: () => formulario.requestSubmit() }, icone('check', { tamanho: 16 }), 'Salvar alterações');
+
+  const formulario = h(
+    'form.pilha',
+    {
+      novalidate: true,
+      onsubmit: async (evento) => {
+        evento.preventDefault();
+        erro.classList.add('oculto');
+        if (clienteNome.value.trim().length < 2 || !marca.value.trim() || !modelo.value.trim() || defeitoRelatado.value.trim().length < 3) {
+          montar(erro, faixaAviso('Confira os campos obrigatórios: nome do cliente, marca, modelo e defeito relatado.'));
+          erro.classList.remove('oculto');
+          return;
+        }
+        if (String(clienteTelefone.value).replace(/\D/g, '').length < 10) {
+          montar(erro, faixaAviso('Informe um telefone válido com DDD.'));
+          erro.classList.remove('oculto');
+          clienteTelefone.focus();
+          return;
+        }
+        ocupado(botao, true, 'Salvando…');
+        try {
+          const resposta = await api.patch(`/api/ordens/${ordem.id}`, {
+            clienteNome: clienteNome.value.trim(),
+            clienteTelefone: clienteTelefone.value.trim(),
+            marca: marca.value.trim(),
+            modelo: modelo.value.trim(),
+            cor: cor.value.trim(),
+            imei: imei.value.trim(),
+            acessorios: acessorios.value.trim(),
+            defeitoRelatado: defeitoRelatado.value.trim(),
+            estadoAparelho: estadoAparelho.value.trim(),
+            valor: valor.value.trim() ? Number(valor.value.replace(/\./g, '').replace(',', '.')) : null,
+          });
+          modal.fechar();
+          toastSucesso(resposta.mensagem ?? 'Dados atualizados.', { titulo: 'OS atualizada' });
+          aoConcluir?.(resposta);
+        } catch (e) {
+          montar(erro, faixaAviso(e.message));
+          erro.classList.remove('oculto');
+          toastErro(e.message);
+        } finally {
+          ocupado(botao, false);
+        }
+      },
+    },
+    erro,
+    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. A loja, o número e a data de entrada não mudam.'),
+    h(
+      'div.formulario__linha.formulario__linha--2',
+      {},
+      campo('Nome do cliente *', clienteNome),
+      campo('WhatsApp *', clienteTelefone),
+    ),
+    h(
+      'div.formulario__linha.formulario__linha--2',
+      {},
+      campo('Marca *', marca),
+      campo('Modelo *', modelo),
+    ),
+    h(
+      'div.formulario__linha.formulario__linha--3',
+      {},
+      campo('Cor', cor, { opcional: true }),
+      campo('IMEI / nº de série', imei, { opcional: true }),
+      campo('Acessórios', acessorios, { opcional: true }),
+    ),
+    campo('Defeito relatado *', defeitoRelatado, { dica: 'Corrija aqui se a descrição foi digitada errada na entrada.' }),
+    campo('Estado do aparelho', estadoAparelho, { opcional: true }),
+    campo('Valor do serviço (R$)', valor, { opcional: true, dica: 'Muda o valor registrado na OS — a alteração entra no histórico.' }),
+  );
+
+  const modal = abrirModal({
+    titulo: 'Editar dados da OS',
+    descricao: `OS ${ordem.numero_os} · ${ordem.loja_nome ?? ''}`,
     corpo: formulario,
     rodape: [
       h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'),

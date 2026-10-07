@@ -212,3 +212,32 @@ curl -s https://universeti-teste.vercel.app/api/health
   invalida as senhas cifradas).
 
 
+## Atualização: edição da OS pelo admin e foto/vídeo no celular
+
+- **Editar dados da OS** (admin/técnico): botão na tela da OS corrige nome e
+  WhatsApp do cliente, marca, modelo, cor, IMEI, acessórios, defeito relatado,
+  estado do aparelho e o valor do serviço. Cada mudança real vira um evento
+  `edicao` no histórico com o valor **antes → depois** e o autor. Loja de
+  entrada, número e data de criação continuam imutáveis (trigger no banco); a
+  migração automática libera apenas o **nome do cliente**, que antes era
+  bloqueado, para correção auditada.
+- **Foto da galeria no celular**: a área de anexo agora tem dois botões —
+  **Tirar foto** (câmera traseira, como antes) e **Foto ou vídeo da galeria**
+  (rolete de fotos e vídeos, sem o atributo `capture`). Vale para entrada,
+  saída, retirada e anexos avulsos.
+- **Vídeos**: MP4/MOV/WebM de até 128 MB (ajustável em `VIDEO_MAX_MB`), com
+  pré-visualização no player, miniaturas com selo de reprodução e visualizador
+  em tela cheia. Na Vercel o vídeo sobe **direto do navegador para o Vercel
+  Blob**, autorizado por um token de cliente gerado pelo servidor (o limite de
+  4,5 MB de corpo da função serverless não se aplica); a API confere os
+  metadados reais (`head`) antes de registrar no histórico. Fora da Vercel, o
+  vídeo passa pelo próprio servidor (disco local).
+- **Range requests**: `/api/fotos/:id/raw` responde `206`/`416` — o player
+  nativo do Safari/iOS exige trechos parciais para tocar vídeo.
+- **Bundle do SDK**: `public/js/vendor/blob-client.js` (gerado com
+  `npm run vendor:blob`) empacota o `@vercel/blob/client` para o navegador;
+  ele só é baixado quando alguém envia um vídeo.
+- **Testes**: fumaça (upload de vídeo, Range 206/416, edição com auditoria e
+  403 do atendente) e navegador (modal de edição e envio de vídeo pela
+  galeria). O fluxo do Blob foi verificado de ponta a ponta contra o storage
+  real (upload simples e multipart, confirmação, download, Range e exclusão).

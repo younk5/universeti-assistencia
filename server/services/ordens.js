@@ -194,6 +194,82 @@ export async function abrirGarantia(osOrigem, usuario, { descricao = null } = {}
   });
 }
 
+/**
+ * Campos que o admin/técnico podem corrigir numa OS já criada. A loja, o
+ * número e a data de criação continuam imutáveis (garantido por trigger no
+ * banco); o status segue o fluxo próprio. Cada alteração real vira um evento
+ * na trilha de auditoria com o "antes → depois".
+ */
+export const CAMPOS_EDITAVEIS_OS = {
+  clienteNome: { coluna: 'cliente_nome', rotulo: 'Nome do cliente' },
+  clienteTelefone: { coluna: 'cliente_telefone', rotulo: 'Telefone' },
+  marca: { coluna: 'marca', rotulo: 'Marca' },
+  modelo: { coluna: 'modelo', rotulo: 'Modelo' },
+  cor: { coluna: 'cor', rotulo: 'Cor' },
+  imei: { coluna: 'imei', rotulo: 'IMEI / série' },
+  acessorios: { coluna: 'acessorios', rotulo: 'Acessórios' },
+  defeitoRelatado: { coluna: 'defeito_relatado', rotulo: 'Defeito relatado' },
+  estadoAparelho: { coluna: 'estado_aparelho', rotulo: 'Estado do aparelho' },
+  valor: { coluna: 'valor', rotulo: 'Valor' },
+};
+
+function resumirValor(valor) {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  const texto = String(valor).replace(/\s+/g, ' ').trim();
+  return texto.length > 120 ? `${texto.slice(0, 117)}…` : texto;
+}
+
+/**
+ * Edição auditável dos dados cadastrais da OS. Só grava o que realmente
+ * mudou e devolve a lista de alterações para a interface.
+ */
+export async function editarOS(osId, usuario, dados) {
+  return transacao(async (conexao) => {
+    const os = await conexao.get('SELECT * FROM ordens_servico WHERE id = ?', [osId]);
+    if (!os) throw naoEncontrado('Ordem de serviço não encontrada.');
+    if (!escopoRede(usuario) && Number(os.loja_id) !== Number(usuario.lojaId)) {
+      throw new ErroApp('Esta OS pertence a outra loja.', { status: 403, codigo: 'loja_restrita' });
+    }
+
+    const atribuicoes = {};
+    const mudancas = [];
+    for (const [campo, { coluna, rotulo }] of Object.entries(CAMPOS_EDITAVEIS_OS)) {
+      if (dados[campo] === undefined) continue;
+      const novo = dados[campo] === '' ? null : dados[campo];
+      const atual = os[coluna] ?? null;
+      if (String(atual ?? '') === String(novo ?? '')) continue;
+      atribuicoes[coluna] = novo;
+      mudancas.push(`${rotulo}: ${resumirValor(atual)} → ${resumirValor(novo)}`);
+    }
+
+    if (!mudancas.length) {
+      return {
+        ordem: await conexao.get(`SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.id = ?`, [osId]),
+        alteracoes: [],
+      };
+    }
+
+    const agora = agoraISO();
+    const colunas = Object.keys(atribuicoes);
+    await conexao.run(
+      `UPDATE ordens_servico SET ${colunas.map((c) => `${c} = ?`).join(', ')}, atualizado_em = ? WHERE id = ?`,
+      [...colunas.map((c) => atribuicoes[c]), agora, osId],
+    );
+
+    await registrarEvento(conexao, {
+      osId,
+      tipoEvento: 'edicao',
+      descricao: `Dados atualizados por ${usuario.nome} — ${mudancas.join(' | ')}`,
+      usuarioId: usuario.id,
+    });
+
+    return {
+      ordem: await conexao.get(`SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.id = ?`, [osId]),
+      alteracoes: mudancas,
+    };
+  });
+}
+
 export async function buscarOS(osId, usuario, { conexao = null } = {}) {
   const os = conexao
     ? await conexao.get(`SELECT ${CAMPOS_OS} ${JOINS_OS} WHERE o.id = ?`, [osId])

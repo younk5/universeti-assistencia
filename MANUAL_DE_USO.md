@@ -23,7 +23,8 @@ Existem só dois níveis de acesso:
 | Abrir nova OS (entrada do aparelho) | ✅ na própria loja | ✅ escolhe a loja |
 | Ver ordens de serviço | só da própria loja | todas as lojas |
 | Assumir aparelho da fila | — | ✅ |
-| Adicionar anotação / anexar foto | ✅ | ✅ |
+| Adicionar anotação / anexar foto ou vídeo | ✅ | ✅ |
+| Editar dados da OS (corrigir cadastro) | — | ✅ |
 | Enviar orçamento para o cliente | — | ✅ |
 | Finalizar serviço (marcar como pronto) | — | ✅ |
 | Registrar retirada com assinatura | ✅ | ✅ |
@@ -98,8 +99,11 @@ Menu **Nova OS** e preencha as seções:
    - **Numérica (PIN)** ou **com letras** → digite no campo;
    - **Desenho (padrão)** → desenhe na grade 3×3; o sistema guarda a ordem dos
      pontos (use **Desfazer** se errar).
-5. **Foto de entrada** (obrigatória) — tire a foto pelo próprio celular,
-   mostrando o estado do aparelho.
+5. **Foto ou vídeo de entrada** (obrigatório) — tire a foto pelo próprio
+   celular, **escolha uma foto da galeria** ou grave um **vídeo curto**
+   mostrando o estado do aparelho. Na área de anexo há dois botões:
+   **Tirar foto** (abre a câmera) e **Foto ou vídeo da galeria** (abre o rolete
+   do celular).
 6. **Termo de entrada** — o cliente **assina na tela** (dedo, caneta ou mouse).
 7. Salve. O sistema gera o número da OS (ex.: `GUA-0123`).
 8. Clique em **Etiqueta PDF** para imprimir e colar no aparelho.
@@ -111,11 +115,12 @@ Menu **Nova OS** e preencha as seções:
 
 - Menu **Ordens**: busque por número, nome ou telefone, e filtre por período,
   status, loja e técnico. **Limpar filtros** volta ao padrão.
-- Clique em **Ver detalhes** para abrir a OS: dados, checklist, fotos,
+- Clique em **Ver detalhes** para abrir a OS: dados, checklist, fotos, vídeos,
   orçamento e a linha do tempo completa.
 - **Adicionar anotação**: registre contatos com o cliente (ex.: "cliente ligou
   pedindo previsão").
-- **Anexar foto**: inclua fotos extras quando necessário.
+- **Anexar foto ou vídeo**: inclua evidências extras quando necessário —
+  câmera na hora, arquivo da galeria ou um vídeo curto.
 
 ### 4.3 Avisar o cliente
 
@@ -174,8 +179,8 @@ Menu **Fila**: mostra os aparelhos **Aguardando**, **Em manutenção** e
 ### 5.3 Finalizar o serviço
 
 1. Clique em **Finalizar serviço**.
-2. Tire a **foto de saída**, informe o **valor cobrado** e os **dias de
-   garantia**.
+2. Tire a **foto de saída** (ou grave um vídeo curto do aparelho funcionando),
+   informe o **valor cobrado** e os **dias de garantia**.
 3. **Concluir e marcar como pronto** — a OS passa para **Pronto para
    retirada** e o balcão pode avisar o cliente.
 
@@ -187,7 +192,16 @@ Menu **Fila**: mostra os aparelhos **Aguardando**, **Em manutenção** e
   histórico. **Não tem volta.** A exclusão fica registrada em Gestão →
   Auditoria.
 
-### 5.5 Painel e relatórios
+### 5.5 Corrigir dados de uma OS (Editar dados)
+
+Na OS aberta, o botão **Editar dados** permite corrigir erros de cadastro:
+nome e WhatsApp do cliente, marca, modelo, cor, IMEI, acessórios, defeito
+relatado, estado do aparelho e o valor do serviço. Cada alteração fica
+registrada no histórico com o valor **antes → depois** e o nome de quem
+alterou. A **loja de entrada, o número da OS e a data de criação não mudam**
+(nem pela edição). Atendentes não veem esse botão.
+
+### 5.6 Painel e relatórios
 
 Menu **Painel**:
 
@@ -199,7 +213,7 @@ Menu **Painel**:
   lojas.
 - **Relatório PDF** e **Exportar CSV** (abre direto no Excel).
 
-### 5.6 Gestão
+### 5.7 Gestão
 
 Menu **Gestão**, com as abas:
 
@@ -227,12 +241,18 @@ Menu **Gestão**, com as abas:
 
 ## 6. Dicas para o dia a dia
 
-- **Foto não envia?** Libere a câmera para o site no navegador. Fotos HEIC do
-  iPhone: ajuste a câmera para "Mais compatível" (JPEG).
+- **Foto não envia?** Libere a câmera para o site no navegador. Para usar uma
+  foto que já está no celular, escolha **Foto ou vídeo da galeria** — não
+  precisa tirar de novo. Fotos HEIC do iPhone: ajuste a câmera para "Mais
+  compatível" (JPEG) ou escolha o arquivo pela galeria.
+- **Vídeo:** grave trechos **curtos** (até ~2 minutos / 128 MB). O vídeo não é
+  comprimido como a foto — se a conexão estiver fraca, prefira a foto.
 - **Sem internet?** O sistema avisa; aguarde a conexão e tente de novo — nada é
   salvo pela metade.
 - **Não achou a OS?** Atendentes só veem a própria loja; confira os filtros de
   período e status em **Ordens**.
+- **Digitou algo errado na OS?** Quem tem permissão usa **Editar dados** — a
+  correção fica registrada no histórico com a data e o seu nome.
 - Anote tudo na OS: o histórico é a proteção da loja e do cliente.
 
 ---

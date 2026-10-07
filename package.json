@@ -20,10 +20,15 @@
     "test:api": "node --no-warnings server/test/smoke.js",
     "test:ui": "node --no-warnings server/test/navegador.js",
     "test:turso": "node --no-warnings server/test/turso.js",
-    "test": "node --no-warnings server/test/todos.js"
+    "test": "node --no-warnings server/test/todos.js",
+    "vendor:blob": "node server/tools/gerar-vendor-blob.js"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "@vercel/blob": "^2.8.0"
+  },
+  "devDependencies": {
+    "buffer": "^6.0.3",
+    "esbuild": "^0.28.2"
   }
 }

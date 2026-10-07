@@ -29,16 +29,39 @@ export function descreverStorage() {
   return provedor?.descrever() ?? 'não inicializado';
 }
 
+/**
+ * Modo de armazenamento ativo, sem inicializar o provedor:
+ *   • 'blob'  — Vercel Blob (produção na Vercel / STORAGE_DRIVER=blob);
+ *   • 'local' — disco local.
+ * O front-end usa isso para decidir se vídeos sobem direto ao Blob.
+ */
+export function modoArmazenamento() {
+  if (process.env.BLOB_READ_WRITE_TOKEN && (process.env.VERCEL || process.env.STORAGE_DRIVER === 'blob')) {
+    return 'blob';
+  }
+  return 'local';
+}
+
 export async function salvarImagem(buffer, nomeArquivo, mime) {
   return (await carregar()).salvar(buffer, nomeArquivo, mime);
 }
 
-export async function lerImagem(referencia) {
-  return (await carregar()).ler(referencia);
+export async function lerImagem(referencia, { faixa = null } = {}) {
+  return (await carregar()).ler(referencia, { faixa });
 }
 
 export async function removerImagem(referencia) {
   return (await carregar()).remover(referencia);
+}
+
+/** Token para o navegador enviar o arquivo direto ao Blob (modo blob). */
+export async function tokenUploadCliente(opcoes) {
+  return (await carregar()).tokenUploadCliente(opcoes);
+}
+
+/** Metadados oficiais de um blob (tamanho/mimetype), para validar uploads diretos. */
+export async function metadadosRemotos(referencia) {
+  return (await carregar()).metadados(referencia);
 }
 
 export function eReferenciaRemota(referencia) {

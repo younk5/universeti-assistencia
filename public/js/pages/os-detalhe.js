@@ -3,7 +3,7 @@ import { icone } from '../icons.js';
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { cartaoFoto } from '../components/cartao-os.js';
-import { modalFinalizarOS, modalRetirarOS, modalComentar, modalAnexarFoto, modalOrcamento, modalDecisaoOrcamento, copiarLink } from '../components/modais-os.js';
+import { modalFinalizarOS, modalRetirarOS, modalComentar, modalAnexarFoto, modalOrcamento, modalDecisaoOrcamento, modalEditarOS, copiarLink } from '../components/modais-os.js';
 import { qrImagem } from '../qr.js';
 import { previewPadrao } from '../padrao.js';
 import {
@@ -209,6 +209,14 @@ export function paginaOSDetalhe(container, params) {
             'Registrar retirada',
           )
         : null,
+      acoes.podeEditar
+        ? h(
+            'button.btn.btn--secundario',
+            { type: 'button', onclick: () => modalEditarOS({ ordem: os, aoConcluir: () => carregar() }) },
+            icone('editar', { tamanho: 16 }),
+            'Editar dados',
+          )
+        : null,
       acoes.podeComentar
         ? h(
             'button.btn.btn--secundario',
@@ -222,7 +230,7 @@ export function paginaOSDetalhe(container, params) {
             'button.btn.btn--secundario',
             { type: 'button', onclick: () => modalAnexarFoto({ ordem: os, aoConcluir: () => carregar() }) },
             icone('camera', { tamanho: 16 }),
-            'Anexar foto',
+            'Anexar foto ou vídeo',
           )
         : null,
       acoes.podeCancelar && os.status !== 'cancelado'
@@ -365,7 +373,7 @@ export function paginaOSDetalhe(container, params) {
         h(
           'div.card__cabecalho',
           {},
-          h('h3', {}, 'Fotos e assinatura'),
+          h('h3', {}, 'Fotos, vídeos e assinatura'),
           h('span.texto-mini.texto-suave', {}, `${fotos.length} anexo(s)`),
         ),
         h(
@@ -375,10 +383,10 @@ export function paginaOSDetalhe(container, params) {
             ? h('div.galeria-fotos', {}, ...fotos.map((foto, indice) => cartaoFoto(foto, indice, () => visualizarFotos(fotos, indice), { aoExcluir: store.pode('os.comentar') ? excluirFoto : undefined })))
             : estadoVazio({
                 icone: 'camera',
-                titulo: 'Nenhuma foto anexada',
-                texto: 'Fotos de entrada, saída e retirada dão respaldo ao serviço prestado.',
+                titulo: 'Nenhum anexo registrado',
+                texto: 'Fotos e vídeos de entrada, saída e retirada dão respaldo ao serviço prestado.',
                 acao: acoes.podeAnexarFoto
-                  ? h('button.btn.btn--secundario', { type: 'button', onclick: () => modalAnexarFoto({ ordem: os, aoConcluir: () => carregar() }) }, 'Anexar primeira foto')
+                  ? h('button.btn.btn--secundario', { type: 'button', onclick: () => modalAnexarFoto({ ordem: os, aoConcluir: () => carregar() }) }, 'Anexar foto ou vídeo')
                   : null,
               }),
         ),
