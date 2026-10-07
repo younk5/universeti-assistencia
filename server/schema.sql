@@ -177,14 +177,13 @@ BEGIN
 END;
 
 -- A OS em si pode evoluir de status e ter os dados cadastrais corrigidos por
--- admin/técnico (com registro no histórico), mas nunca troca de loja, número
--- ou data de criação, e uma OS retirada não volta de status.
+-- admin/técnico (inclusive a loja de entrada — com registro no histórico),
+-- mas nunca troca de número ou data de criação, e uma OS retirada não volta
+-- de status.
 CREATE TRIGGER IF NOT EXISTS trg_os_campos_imutaveis
 BEFORE UPDATE ON ordens_servico
 BEGIN
   SELECT CASE
-    WHEN OLD.loja_id <> NEW.loja_id
-      THEN RAISE(ABORT, 'A loja de entrada da OS nao pode ser alterada.')
     WHEN OLD.numero_os <> NEW.numero_os
       THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
     WHEN OLD.criado_em <> NEW.criado_em

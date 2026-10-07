@@ -189,6 +189,7 @@ function normalizarEdicaoOS(corpo) {
     defeitoRelatado: () => exigirTexto(corpo.defeitoRelatado, 'defeito relatado', { min: 3, max: 2000 }),
     estadoAparelho: () => exigirTexto(corpo.estadoAparelho, 'estado do aparelho', { max: 1000, opcional: true }),
     valor: () => exigirNumero(corpo.valor, 'valor', { min: 0, max: 999999 }),
+    lojaId: () => exigirNumero(corpo.lojaId, 'loja de entrada', { min: 1, max: 999999, opcional: false }),
   };
   const dados = {};
   for (const [campo, ler] of Object.entries(leitores)) {

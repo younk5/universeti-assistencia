@@ -215,12 +215,12 @@ curl -s https://universeti-teste.vercel.app/api/health
 ## Atualização: edição da OS pelo admin e foto/vídeo no celular
 
 - **Editar dados da OS** (admin/técnico): botão na tela da OS corrige nome e
-  WhatsApp do cliente, marca, modelo, cor, IMEI, acessórios, defeito relatado,
-  estado do aparelho e o valor do serviço. Cada mudança real vira um evento
-  `edicao` no histórico com o valor **antes → depois** e o autor. Loja de
-  entrada, número e data de criação continuam imutáveis (trigger no banco); a
-  migração automática libera apenas o **nome do cliente**, que antes era
-  bloqueado, para correção auditada.
+  WhatsApp do cliente, **loja de entrada**, marca, modelo, cor, IMEI,
+  acessórios, defeito relatado, estado do aparelho e o valor do serviço. Cada
+  mudança real vira um evento `edicao` no histórico com o valor **antes →
+  depois** e o autor (a troca de loja é registrada com os nomes das lojas).
+  O número da OS e a data de criação seguem imutáveis, e a migração automática
+  libera o nome do cliente e a loja de entrada para o fluxo auditado.
 - **Foto da galeria no celular**: a área de anexo agora tem dois botões —
   **Tirar foto** (câmera traseira, como antes) e **Foto ou vídeo da galeria**
   (rolete de fotos e vídeos, sem o atributo `capture`). Vale para entrada,

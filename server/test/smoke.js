@@ -326,7 +326,7 @@ try {
   ok(r.dados.ordem?.cliente_telefone === '(11) 99888-7766', 'telefone corrigido');
   ok(r.dados.ordem?.modelo === 'iPhone 13 Pro', 'modelo corrigido');
   ok(r.dados.ordem?.numero_os === antesEdicao.dados.ordem.numero_os, 'número da OS não muda na edição');
-  ok(Number(r.dados.ordem?.loja_id) === Number(antesEdicao.dados.ordem.loja_id), 'loja de entrada não muda na edição');
+  ok(Number(r.dados.ordem?.loja_id) === Number(antesEdicao.dados.ordem.loja_id), 'loja não muda quando não é informada na edição');
   ok(r.dados.ordem?.criado_em === antesEdicao.dados.ordem.criado_em, 'data de criação não muda na edição');
   ok(Array.isArray(r.dados.alteracoes) && r.dados.alteracoes.length >= 5, 'resposta lista as alterações feitas', JSON.stringify(r.dados.alteracoes).slice(0, 200));
 
@@ -355,11 +355,31 @@ try {
   ok(r.dados.ordem?.modelo === 'iPhone 13 Pro', 'edição tentada pelo atendente não altera nada');
   await api('POST', '/api/auth/login', { email: 'tecnico@teste.com', senha: 'Teste@123' });
 
-  // Restaura telefone e valor usados pelos testes seguintes (rastreio pelo
-  // final do telefone e busca por dígitos) — a restauração também é auditada.
-  r = await api('PATCH', `/api/ordens/${osId}`, { clienteTelefone: '(11) 91234-5678', valor: 480.5 });
+  // Loja de entrada: pode ser corrigida (com auditoria), o número não muda.
+  const lojaOriginal = Number((await consultarUm("SELECT id FROM lojas WHERE codigo = 'TST'")).id);
+  const lojaDestino = Number((await consultarUm("SELECT id FROM lojas WHERE codigo = 'TSB'")).id);
+  r = await api('PATCH', `/api/ordens/${osId}`, { lojaId: lojaDestino });
+  ok(r.status === 200 && Number(r.dados.ordem?.loja_id) === lojaDestino, 'loja de entrada pode ser corrigida (200)', JSON.stringify(r.dados).slice(0, 140));
+  ok(r.dados.ordem?.numero_os === numeroOS, 'número da OS continua igual após trocar de loja');
+  const eventosAposLoja = (await api('GET', `/api/ordens/${osId}`)).dados.eventos.filter((e) => e.tipo_evento === 'edicao');
+  const eventoLoja = eventosAposLoja[eventosAposLoja.length - 1];
   ok(
-    r.status === 200 && r.dados.ordem?.cliente_telefone === '(11) 91234-5678' && Number(r.dados.ordem?.valor) === 480.5,
+    /Loja de entrada: Loja Teste Centro → Loja Teste Bairro/.test(eventoLoja?.descricao ?? ''),
+    'histórico registra a troca de loja com os nomes',
+    String(eventoLoja?.descricao).slice(0, 160),
+  );
+
+  r = await api('PATCH', `/api/ordens/${osId}`, { lojaId: 999999 });
+  ok(r.status === 422, 'loja de entrada inexistente é recusada (422)', `status=${r.status}`);
+
+  // Restaura telefone, valor e a loja original usados pelos testes seguintes
+  // (rastreio pelo final do telefone e busca por dígitos) — também auditado.
+  r = await api('PATCH', `/api/ordens/${osId}`, { clienteTelefone: '(11) 91234-5678', valor: 480.5, lojaId: lojaOriginal });
+  ok(
+    r.status === 200 &&
+      r.dados.ordem?.cliente_telefone === '(11) 91234-5678' &&
+      Number(r.dados.ordem?.valor) === 480.5 &&
+      Number(r.dados.ordem?.loja_id) === lojaOriginal,
     'valores restaurados para os testes seguintes (também com auditoria)',
   );
 

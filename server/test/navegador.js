@@ -428,6 +428,19 @@ try {
     modalEdicao.includes('Nome do cliente') && modalEdicao.includes('WhatsApp') && modalEdicao.includes('IMEI'),
     'campos do cliente e do aparelho disponíveis para correção',
   );
+  ok(modalEdicao.includes('Loja de entrada'), 'campo de loja de entrada disponível para correção');
+  const lojaNoModal = await avaliar(
+    `(() => {
+      const seletor = document.querySelector('.modal select.selecao');
+      if (!seletor) return null;
+      return { opcoes: seletor.options.length, escolhida: seletor.options[seletor.selectedIndex]?.textContent ?? '' };
+    })()`,
+  );
+  ok(
+    lojaNoModal && lojaNoModal.opcoes >= 3 && lojaNoModal.escolhida.length > 0,
+    'seletor de loja lista as lojas e já vem com a loja atual marcada',
+    JSON.stringify(lojaNoModal),
+  );
   ok(modalEdicao.includes('fica registrada no histórico'), 'modal avisa que a alteração fica auditada');
 
   const resultadoEdicao = await avaliar(`(async () => {
