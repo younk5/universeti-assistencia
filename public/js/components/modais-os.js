@@ -1,6 +1,7 @@
 import { h, montar } from '../dom.js';
 import { icone } from '../icons.js';
 import { api } from '../api.js';
+import { store } from '../store.js';
 import { abrirModal, ocupado, toastSucesso, toastErro, faixaAviso } from '../ui.js';
 import { criarCaptura } from './captura.js';
 import { criarAssinatura } from '../assinatura.js';
@@ -377,11 +378,27 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Correção dos dados cadastrais da OS (admin/técnico). Cada mudança real vira
- * um registro "antes → depois" na linha do tempo — loja, número e data de
- * criação não estão aqui porque continuam imutáveis no banco.
+ * Correção dos dados cadastrais da OS (admin/técnico) — incluindo a loja de
+ * entrada. Cada mudança real vira um registro "antes → depois" na linha do
+ * tempo; número e data de criação não estão aqui porque continuam imutáveis
+ * no banco.
  */
 export function modalEditarOS({ ordem, aoConcluir }) {
+  const lojas = store.meta?.lojas ?? [];
+  const seletorLoja = lojas.length
+    ? h(
+        'select.selecao',
+        {},
+        ...lojas.map((l) =>
+          h(
+            'option',
+            { value: String(l.id), selected: Number(l.id) === Number(ordem.loja_id) },
+            l.ativo ? l.nome : `${l.nome} (desativada)`,
+          ),
+        ),
+      )
+    : null;
+
   const clienteNome = h('input.entrada', { value: ordem.cliente_nome ?? '', required: true });
   const clienteTelefone = h('input.entrada', { type: 'tel', inputMode: 'tel', value: ordem.cliente_telefone ?? '', required: true });
   const marca = h('input.entrada', { value: ordem.marca ?? '', required: true });
@@ -437,6 +454,7 @@ export function modalEditarOS({ ordem, aoConcluir }) {
             defeitoRelatado: defeitoRelatado.value.trim(),
             estadoAparelho: estadoAparelho.value.trim(),
             valor: valor.value.trim() ? Number(valor.value.replace(/\./g, '').replace(',', '.')) : null,
+            lojaId: seletorLoja ? Number(seletorLoja.value) : undefined,
           });
           modal.fechar();
           toastSucesso(resposta.mensagem ?? 'Dados atualizados.', { titulo: 'OS atualizada' });
@@ -451,13 +469,14 @@ export function modalEditarOS({ ordem, aoConcluir }) {
       },
     },
     erro,
-    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. A loja, o número e a data de entrada não mudam.'),
+    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. O número da OS e a data de entrada não mudam.'),
     h(
       'div.formulario__linha.formulario__linha--2',
       {},
       campo('Nome do cliente *', clienteNome),
       campo('WhatsApp *', clienteTelefone),
     ),
+    seletorLoja ? campo('Loja de entrada *', seletorLoja, { dica: 'Corrige a loja em que a OS entrou — o número da OS continua igual.' }) : null,
     h(
       'div.formulario__linha.formulario__linha--2',
       {},

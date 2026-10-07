@@ -195,10 +195,11 @@ export async function abrirGarantia(osOrigem, usuario, { descricao = null } = {}
 }
 
 /**
- * Campos que o admin/técnico podem corrigir numa OS já criada. A loja, o
- * número e a data de criação continuam imutáveis (garantido por trigger no
- * banco); o status segue o fluxo próprio. Cada alteração real vira um evento
- * na trilha de auditoria com o "antes → depois".
+ * Campos de texto/número que o admin/técnico podem corrigir numa OS já
+ * criada. A loja de entrada é tratada à parte (com resolução dos nomes para o
+ * histórico) e o status segue o fluxo próprio. Número e data de criação
+ * continuam imutáveis (garantido por trigger no banco). Cada alteração real
+ * vira um evento na trilha de auditoria com o "antes → depois".
  */
 export const CAMPOS_EDITAVEIS_OS = {
   clienteNome: { coluna: 'cliente_nome', rotulo: 'Nome do cliente' },
@@ -240,6 +241,19 @@ export async function editarOS(osId, usuario, dados) {
       if (String(atual ?? '') === String(novo ?? '')) continue;
       atribuicoes[coluna] = novo;
       mudancas.push(`${rotulo}: ${resumirValor(atual)} → ${resumirValor(novo)}`);
+    }
+
+    // Loja de entrada: validada contra o cadastro e registrada com os nomes
+    // (o histórico precisa ser legível — "Centro → Cumbica", não "1 → 2").
+    if (dados.lojaId !== undefined) {
+      const destinoId = Number(dados.lojaId);
+      if (destinoId !== Number(os.loja_id)) {
+        const destino = await conexao.get('SELECT id, nome FROM lojas WHERE id = ?', [destinoId]);
+        if (!destino) throw invalido('Loja de entrada inválida.', { campo: 'lojaId' });
+        const origem = await conexao.get('SELECT nome FROM lojas WHERE id = ?', [os.loja_id]);
+        atribuicoes.loja_id = destino.id;
+        mudancas.push(`Loja de entrada: ${resumirValor(origem?.nome ?? `#${os.loja_id}`)} → ${resumirValor(destino.nome)}`);
+      }
     }
 
     if (!mudancas.length) {

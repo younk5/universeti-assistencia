@@ -195,11 +195,12 @@ Menu **Fila**: mostra os aparelhos **Aguardando**, **Em manutenção** e
 ### 5.5 Corrigir dados de uma OS (Editar dados)
 
 Na OS aberta, o botão **Editar dados** permite corrigir erros de cadastro:
-nome e WhatsApp do cliente, marca, modelo, cor, IMEI, acessórios, defeito
-relatado, estado do aparelho e o valor do serviço. Cada alteração fica
-registrada no histórico com o valor **antes → depois** e o nome de quem
-alterou. A **loja de entrada, o número da OS e a data de criação não mudam**
-(nem pela edição). Atendentes não veem esse botão.
+nome e WhatsApp do cliente, **loja de entrada**, marca, modelo, cor, IMEI,
+acessórios, defeito relatado, estado do aparelho e o valor do serviço. Cada
+alteração fica registrada no histórico com o valor **antes → depois** e o nome
+de quem alterou — a troca de loja aparece com os nomes das duas lojas. O
+**número da OS e a data de criação não mudam** (nem pela edição). Atendentes
+não veem esse botão.
 
 ### 5.6 Painel e relatórios
 

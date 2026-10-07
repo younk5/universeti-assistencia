@@ -232,10 +232,12 @@ export async function aplicarMigracoes(atual) {
 }
 
 /**
- * O nome do cliente passou a ser editável por admin/técnico (com registro no
- * histórico). `CREATE TRIGGER IF NOT EXISTS` não substitui um trigger
- * existente, então a versão antiga — que abortava a troca do nome — precisa
- * ser recriada explicitamente nos bancos que já existiam.
+ * O nome do cliente e a loja de entrada passaram a ser editáveis por
+ * admin/técnico (com registro no histórico). `CREATE TRIGGER IF NOT EXISTS`
+ * não substitui um trigger existente, então as versões antigas — que
+ * abortavam a troca do nome e da loja — precisam ser recriadas nos bancos
+ * que já existiam. O marcador é a mensagem de bloqueio da loja, presente em
+ * todas as versões anteriores.
  */
 async function recriarTriggerCamposOS(atual) {
   let sql = '';
@@ -247,7 +249,7 @@ async function recriarTriggerCamposOS(atual) {
   } catch {
     return; // driver sem sqlite_master: o schema novo já cuida de bancos vazios
   }
-  if (!sql || !/cliente_nome/.test(sql)) return;
+  if (!sql || !/loja de entrada da OS nao pode ser alterada/i.test(sql)) return;
 
   try {
     await atual.executar('DROP TRIGGER IF EXISTS trg_os_campos_imutaveis');
@@ -256,8 +258,6 @@ async function recriarTriggerCamposOS(atual) {
       BEFORE UPDATE ON ordens_servico
       BEGIN
         SELECT CASE
-          WHEN OLD.loja_id <> NEW.loja_id
-            THEN RAISE(ABORT, 'A loja de entrada da OS nao pode ser alterada.')
           WHEN OLD.numero_os <> NEW.numero_os
             THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
           WHEN OLD.criado_em <> NEW.criado_em
@@ -266,7 +266,7 @@ async function recriarTriggerCamposOS(atual) {
             THEN RAISE(ABORT, 'Uma OS ja retirada nao pode mudar de status.')
         END;
       END`);
-    console.log('[migração] trigger de campos da OS atualizado (edição de dados com auditoria).');
+    console.log('[migração] trigger de campos da OS atualizado (edição de dados e da loja com auditoria).');
   } catch (erro) {
     console.warn('[migração] falhou ao recriar o trigger de campos da OS:', erro?.message ?? erro);
   }

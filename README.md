@@ -142,12 +142,12 @@ BEGIN
 END;
 ```
 
-Além disso, campos-chave da OS (loja de entrada, número e data de criação) não
-podem ser alterados depois do cadastro, e uma OS já retirada não volta para
-trás. Os demais dados cadastrais podem ser **corrigidos por admin/técnico** no
-botão **Editar dados** — cada mudança vira um evento “Dados atualizados” no
-histórico, com o valor anterior e o novo. O nome do cliente também é editável
-por esse caminho auditado.
+Além disso, o número da OS e a data de criação não podem ser alterados depois
+do cadastro, e uma OS já retirada não volta para trás. Os demais dados
+cadastrais — inclusive a **loja de entrada** — podem ser corrigidos por
+admin/técnico no botão **Editar dados**: cada mudança vira um evento “Dados
+atualizados” no histórico, com o valor anterior e o novo. O nome do cliente
+também é editável por esse caminho auditado.
 
 ---
 
@@ -192,8 +192,9 @@ por esse caminho auditado.
   **direto do navegador para o armazenamento**, com autorização gerada pelo
   servidor; no modo local vai pelo próprio servidor. O player de vídeo usa
   requisições `Range` (206) para tocar no Safari/iOS.
-- **Editar dados da OS**: correção de cliente, aparelho, defeito e valor por
-  admin/técnico, com registro “antes → depois” na trilha de auditoria.
+- **Editar dados da OS**: correção de cliente, aparelho, defeito, valor e
+  **loja de entrada** por admin/técnico, com registro “antes → depois” na
+  trilha de auditoria.
 - **Etiqueta e comprovante em PDF** (gerados no navegador, sem dependências): a
   etiqueta traz a marca, o número da OS em destaque, os dados do cliente e do
   aparelho, o defeito e o código de barras Code 128; o comprovante sai em A4 com
