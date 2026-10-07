@@ -39,6 +39,9 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_loja ON usuarios(loja_id);
 CREATE TABLE IF NOT EXISTS ordens_servico (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   numero_os           TEXT    NOT NULL UNIQUE,
+  -- Número anterior (a OS é renumerada quando a loja de entrada é corrigida);
+  -- o rastreio do cliente continua aceitando o número antigo.
+  numero_os_anterior  TEXT,
   loja_id             INTEGER NOT NULL REFERENCES lojas(id) ON DELETE RESTRICT,
   cliente_nome        TEXT    NOT NULL,
   cliente_telefone    TEXT    NOT NULL,
@@ -176,16 +179,14 @@ BEGIN
   SELECT RAISE(ABORT, 'Registro de auditoria: fotos_os nao pode ser excluido.');
 END;
 
--- A OS em si pode evoluir de status e ter os dados cadastrais corrigidos por
--- admin/técnico (inclusive a loja de entrada — com registro no histórico),
--- mas nunca troca de número ou data de criação, e uma OS retirada não volta
--- de status.
+-- A OS pode evoluir de status e ter os dados cadastrais corrigidos por
+-- admin/técnico (loja, nome do cliente etc. — com registro no histórico).
+-- O número acompanha a loja (renumerado pelo fluxo auditado) e a data de
+-- criação nunca muda; uma OS retirada não volta de status.
 CREATE TRIGGER IF NOT EXISTS trg_os_campos_imutaveis
 BEFORE UPDATE ON ordens_servico
 BEGIN
   SELECT CASE
-    WHEN OLD.numero_os <> NEW.numero_os
-      THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
     WHEN OLD.criado_em <> NEW.criado_em
       THEN RAISE(ABORT, 'A data de criacao da OS nao pode ser alterada.')
     WHEN OLD.status = 'retirado' AND NEW.status <> 'retirado'

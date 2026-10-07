@@ -198,9 +198,12 @@ Na OS aberta, o botão **Editar dados** permite corrigir erros de cadastro:
 nome e WhatsApp do cliente, **loja de entrada**, marca, modelo, cor, IMEI,
 acessórios, defeito relatado, estado do aparelho e o valor do serviço. Cada
 alteração fica registrada no histórico com o valor **antes → depois** e o nome
-de quem alterou — a troca de loja aparece com os nomes das duas lojas. O
-**número da OS e a data de criação não mudam** (nem pela edição). Atendentes
-não veem esse botão.
+de quem alterou. **Ao trocar a loja, o número da OS acompanha a loja de
+destino** (ex.: `GUA-0001` vira `CUM-0006`) — o número antigo fica no histórico,
+continua achando a OS na busca e o cliente que já tinha o link/QR antigo
+continua rastreando normalmente. Etiquetas já impressas ficam com o número
+antigo; imprima uma nova se precisar. A **data de criação não muda** (nem pela
+edição). Atendentes não veem esse botão.
 
 ### 5.6 Painel e relatórios
 

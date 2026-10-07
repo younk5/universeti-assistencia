@@ -355,18 +355,38 @@ try {
   ok(r.dados.ordem?.modelo === 'iPhone 13 Pro', 'edição tentada pelo atendente não altera nada');
   await api('POST', '/api/auth/login', { email: 'tecnico@teste.com', senha: 'Teste@123' });
 
-  // Loja de entrada: pode ser corrigida (com auditoria), o número não muda.
+  // Loja de entrada: pode ser corrigida e o número acompanha a loja de destino
+  // (o número antigo fica no histórico e continua valendo no rastreio).
   const lojaOriginal = Number((await consultarUm("SELECT id FROM lojas WHERE codigo = 'TST'")).id);
   const lojaDestino = Number((await consultarUm("SELECT id FROM lojas WHERE codigo = 'TSB'")).id);
   r = await api('PATCH', `/api/ordens/${osId}`, { lojaId: lojaDestino });
   ok(r.status === 200 && Number(r.dados.ordem?.loja_id) === lojaDestino, 'loja de entrada pode ser corrigida (200)', JSON.stringify(r.dados).slice(0, 140));
-  ok(r.dados.ordem?.numero_os === numeroOS, 'número da OS continua igual após trocar de loja');
+  const numeroAposTroca = r.dados.ordem?.numero_os;
+  ok(
+    String(numeroAposTroca).startsWith('TSB-') && numeroAposTroca !== numeroOS,
+    'número da OS passa para a numeração da loja de destino',
+    String(numeroAposTroca),
+  );
+  ok(
+    (r.dados.alteracoes ?? []).some((a) => a.includes(`Número da OS: ${numeroOS} → ${numeroAposTroca}`)),
+    'resposta lista a renumeracao da OS',
+    JSON.stringify(r.dados.alteracoes).slice(0, 200),
+  );
   const eventosAposLoja = (await api('GET', `/api/ordens/${osId}`)).dados.eventos.filter((e) => e.tipo_evento === 'edicao');
   const eventoLoja = eventosAposLoja[eventosAposLoja.length - 1];
   ok(
-    /Loja de entrada: Loja Teste Centro → Loja Teste Bairro/.test(eventoLoja?.descricao ?? ''),
-    'histórico registra a troca de loja com os nomes',
-    String(eventoLoja?.descricao).slice(0, 160),
+    /Loja de entrada: Loja Teste Centro → Loja Teste Bairro/.test(eventoLoja?.descricao ?? '') &&
+      String(eventoLoja?.descricao ?? '').includes(`Número da OS: ${numeroOS} → ${numeroAposTroca}`),
+    'histórico registra a troca de loja e a renumeracao',
+    String(eventoLoja?.descricao).slice(0, 200),
+  );
+
+  // O cliente que já tinha o número antigo continua conseguindo rastrear.
+  r = await api('GET', `/api/publico/os/${numeroOS}?tel=7766`, null, { cookie: false });
+  ok(
+    r.status === 200 && r.dados.ordem?.numeroOS === numeroAposTroca,
+    'rastreio pelo número anterior continua funcionando',
+    JSON.stringify(r.dados).slice(0, 140),
   );
 
   r = await api('PATCH', `/api/ordens/${osId}`, { lojaId: 999999 });
@@ -382,6 +402,7 @@ try {
       Number(r.dados.ordem?.loja_id) === lojaOriginal,
     'valores restaurados para os testes seguintes (também com auditoria)',
   );
+  ok(r.dados.ordem?.numero_os === numeroOS, 'número volta à numeração da loja original', String(r.dados.ordem?.numero_os));
 
   titulo('Retirada (atendente) e auditoria');
   await api('POST', '/api/auth/login', { email: 'atendente@teste.com', senha: 'Teste@123' });
