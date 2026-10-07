@@ -887,14 +887,6 @@ img { max-width: 100%; display: block; }
 }
 .captura__area:hover { border-color: var(--cor-marca); background: var(--cor-marca-suave); }
 .captura__area--arrastando { border-color: var(--cor-marca); background: var(--cor-marca-suave); }
-.captura__area input[type='file'] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
 .captura__interno { display: grid; gap: var(--esp-2); justify-items: center; pointer-events: none; }
 .captura__icone {
   width: 46px;
@@ -908,6 +900,12 @@ img { max-width: 100%; display: block; }
 .captura__icone svg { width: 24px; height: 24px; }
 .captura__titulo { font-weight: 640; font-size: 0.9rem; }
 .captura__dica { font-size: 0.76rem; color: var(--cor-texto-fraco); max-width: 34ch; }
+.captura__acoes {
+  display: flex;
+  gap: var(--esp-2);
+  flex-wrap: wrap;
+}
+.captura__acoes .captura__botao { flex: 1 1 160px; }
 
 .preview-foto {
   position: relative;
@@ -916,7 +914,8 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--cor-borda);
   background: var(--cor-superficie-3);
 }
-.preview-foto img { width: 100%; max-height: 320px; object-fit: contain; background: #000; }
+.preview-foto img,
+.preview-foto video { width: 100%; max-height: 320px; object-fit: contain; background: #000; }
 .preview-foto__barra {
   display: flex;
   align-items: center;
@@ -1197,7 +1196,22 @@ img { max-width: 100%; display: block; }
   aspect-ratio: 4 / 3;
   padding: 0;
 }
-.miniatura img { width: 100%; height: 100%; object-fit: cover; }
+.miniatura img,
+.miniatura video { width: 100%; height: 100%; object-fit: cover; }
+.miniatura__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(9, 12, 24, 0.62);
+  color: #fff;
+  pointer-events: none;
+}
 .miniatura__selo {
   position: absolute;
   left: 6px;
@@ -1261,7 +1275,8 @@ img { max-width: 100%; display: block; }
   overflow: hidden;
   padding: 0 var(--esp-3);
 }
-.visualizador__imagem img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.visualizador__imagem img,
+.visualizador__imagem video { max-width: 100%; max-height: 100%; object-fit: contain; }
 .visualizador__rodape { padding: var(--esp-3) var(--esp-4) var(--esp-5); color: #d5d9e8; font-size: 0.8rem; text-align: center; }
 
 /* --------------------------------- Modal --------------------------------- */

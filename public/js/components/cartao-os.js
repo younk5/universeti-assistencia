@@ -2,7 +2,7 @@ import { h } from '../dom.js';
 import { icone } from '../icons.js';
 import { badgeStatus } from '../ui.js';
 import { quando, moeda, telefone } from '../format.js';
-import { ROTULOS_TIPO_FOTO } from '../constantes.js';
+import { ROTULOS_TIPO_FOTO, ehVideoMime } from '../constantes.js';
 
 export function cartaoOS(ordem, { mostrarLoja = false } = {}) {
   const cartao = h(
@@ -48,8 +48,8 @@ export function cartaoOS(ordem, { mostrarLoja = false } = {}) {
           : h('span.linha', { style: { gap: '4px' } }, icone('usuario', { tamanho: 13 }), 'Sem técnico'),
         ordem.valor ? h('span', {}, moeda(ordem.valor)) : null,
         ordem.total_fotos
-          ? h('span.linha', { style: { gap: '4px' } }, icone('imagem', { tamanho: 13 }), `${ordem.total_fotos} foto(s)`)
-          : h('span.linha.texto-fraco', { style: { gap: '4px' } }, icone('alerta', { tamanho: 13 }), 'Sem foto'),
+          ? h('span.linha', { style: { gap: '4px' } }, icone('imagem', { tamanho: 13 }), `${ordem.total_fotos} anexo(s)`)
+          : h('span.linha.texto-fraco', { style: { gap: '4px' } }, icone('alerta', { tamanho: 13 }), 'Sem anexo'),
       ),
       h('span.texto-fraco.linha', { style: { gap: '2px' } }, 'Abrir', icone('chevronDireita', { tamanho: 15 })),
     ),
@@ -80,8 +80,20 @@ export function linhaCompactaOS(ordem) {
 }
 
 export function cartaoFoto(foto, indice, aoAbrir, { aoExcluir } = {}) {
+  const video = ehVideoMime(foto.mime);
+  const descricao = foto.legenda ?? `${video ? 'Vídeo' : 'Foto'} de ${foto.tipo}`;
   const conteudo = [
-    h('img', { src: `/api/fotos/${foto.id}/raw`, alt: foto.legenda ?? `Foto de ${foto.tipo}`, loading: 'lazy' }),
+    video
+      ? h('video', {
+          src: `/api/fotos/${foto.id}/raw#t=0.1`,
+          muted: true,
+          playsinline: true,
+          preload: 'metadata',
+          'aria-hidden': 'true',
+          tabindex: '-1',
+        })
+      : h('img', { src: `/api/fotos/${foto.id}/raw`, alt: descricao, loading: 'lazy' }),
+    video ? h('span.miniatura__play', {}, icone('play', { tamanho: 16 })) : null,
     h('span.miniatura__selo', {}, ROTULOS_TIPO_FOTO[foto.tipo] ?? foto.tipo),
     h('span.miniatura__quando', {}, quando(foto.criado_em)),
   ];
@@ -115,8 +127,8 @@ export function cartaoFoto(foto, indice, aoAbrir, { aoExcluir } = {}) {
     {
       type: 'button',
       onclick: () => aoAbrir(indice),
-      title: foto.legenda ?? `Foto de ${foto.tipo}`,
-      'aria-label': `Ampliar foto de ${ROTULOS_TIPO_FOTO[foto.tipo] ?? foto.tipo}`,
+      title: foto.legenda ?? descricao,
+      'aria-label': `Ampliar ${descricao}`,
     },
     ...conteudo,
   );

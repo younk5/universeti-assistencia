@@ -34,6 +34,16 @@ export const ROTULOS_TIPO_FOTO = Object.freeze({
   assinatura: 'Assinatura',
 });
 
+/** Vídeo é tratado como anexo no mesmo fluxo da foto. */
+export function ehVideoMime(mime) {
+  return String(mime ?? '').toLowerCase().startsWith('video/');
+}
+
+export function rotuloAnexo(mime, tipo) {
+  const substantivo = ehVideoMime(mime) ? 'Vídeo' : 'Foto';
+  return tipo ? `${substantivo} · ${ROTULOS_TIPO_FOTO[tipo] ?? tipo}` : substantivo;
+}
+
 export const ROTULOS_TIPO_EVENTO = Object.freeze({
   criacao: 'Entrada registrada',
   status: 'Mudança de status',
@@ -41,7 +51,7 @@ export const ROTULOS_TIPO_EVENTO = Object.freeze({
   finalizar: 'Serviço concluído',
   retirar: 'Entregue ao cliente',
   comentario: 'Anotação',
-  foto: 'Foto anexada',
+  foto: 'Anexo registrado',
   edicao: 'Dados atualizados',
   reabertura: 'OS reaberta',
   orcamento: 'Orçamento enviado',

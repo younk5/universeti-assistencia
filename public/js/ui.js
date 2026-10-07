@@ -1,7 +1,7 @@
 import { h, montar } from './dom.js';
 import { icone } from './icons.js';
 import { dataHora } from './format.js';
-import { ROTULOS_STATUS } from './constantes.js';
+import { ROTULOS_STATUS, ehVideoMime } from './constantes.js';
 
 /* -------------------------------------------------------------------------- */
 /* Toasts                                                                      */
@@ -304,18 +304,25 @@ export function visualizarFotos(fotos, indiceInicial = 0) {
   let indice = Math.max(0, Math.min(indiceInicial, fotos.length - 1));
   const focoAnterior = document.activeElement;
 
-  const imagem = h('img', { alt: '' });
+  const caixaMidia = h('div.visualizador__imagem', { onclick: (e) => { if (e.target === e.currentTarget) fechar(); } });
   const legenda = h('div.visualizador__rodape');
   const titulo = h('div.texto-forte');
   const contador = h('div.texto-mini', { style: { opacity: 0.7 }, 'aria-live': 'polite' });
 
   function atualizar() {
     const foto = fotos[indice];
-    imagem.src = `/api/fotos/${foto.id}/raw`;
-    imagem.alt = foto.legenda ?? `Foto de ${foto.tipo}`;
+    const video = ehVideoMime(foto.mime);
+    const descricao = foto.legenda ?? `${video ? 'Vídeo' : 'Foto'} de ${foto.tipo}`;
+    // Vídeo ganha player nativo com controles; foto segue como imagem ampliada.
+    montar(
+      caixaMidia,
+      video
+        ? h('video', { src: `/api/fotos/${foto.id}/raw`, controls: true, playsinline: true, autoplay: true, preload: 'metadata' })
+        : h('img', { src: `/api/fotos/${foto.id}/raw`, alt: descricao }),
+    );
     const autor = foto.usuario_nome ? ` · ${foto.usuario_nome}` : '';
     legenda.textContent = `${dataHora(foto.criado_em)}${autor}`;
-    titulo.textContent = foto.legenda ?? `Foto de ${foto.tipo}`;
+    titulo.textContent = descricao;
     contador.textContent = `${indice + 1} de ${fotos.length}`;
   }
 
@@ -342,11 +349,7 @@ export function visualizarFotos(fotos, indiceInicial = 0) {
       h('div', {}, titulo, contador),
       botaoFechar,
     ),
-    h(
-      'div.visualizador__imagem',
-      { onclick: (e) => { if (e.target === e.currentTarget) fechar(); } },
-      imagem,
-    ),
+    caixaMidia,
     h('div', { style: { display: 'flex', justifyContent: 'center', gap: '12px' } },
       fotos.length > 1 ? anterior : null,
       fotos.length > 1 ? proximo : null,

@@ -13,9 +13,19 @@ import {
   validarTransicao,
   excluirOS,
   abrirGarantia,
+  editarOS,
 } from '../services/ordens.js';
 import { transacao, consultar, consultarUm } from '../db.js';
-import { salvarFoto, buscarFoto, lerArquivoFoto, TIPOS_FOTO, excluirFoto } from '../services/fotos.js';
+import {
+  salvarFoto,
+  buscarFoto,
+  lerArquivoFoto,
+  TIPOS_FOTO,
+  excluirFoto,
+  registrarAnexoRemoto,
+  MIMES_VIDEO,
+  MIMES_IMAGEM,
+} from '../services/fotos.js';
 import {
   criarOrcamento,
   decidirOrcamentoInterno,
@@ -25,6 +35,8 @@ import {
   ROTULOS_ORCAMENTO,
 } from '../services/orcamentos.js';
 import { lerNumeroConfig, CHAVES } from '../services/configuracoes.js';
+import { modoArmazenamento, tokenUploadCliente, metadadosRemotos } from '../storage.js';
+import { config } from '../config.js';
 import {
   exigirTexto,
   exigirTelefone,
@@ -33,6 +45,7 @@ import {
   lerCorpoBinario,
   agoraISO,
   telefoneParaWhatsapp,
+  analisarFaixa,
 } from '../utils.js';
 import { exigirAutenticacao, exigirPermissao, pode, escopoRede, acessoTotal } from '../auth.js';
 import { ErroApp, invalido, naoEncontrado, semPermissao } from '../erros.js';
@@ -160,6 +173,34 @@ function normalizarPayloadOS(corpo) {
   };
 }
 
+/**
+ * Valida somente os campos presentes no corpo — a edição pode corrigir um
+ * único dado sem exigir o formulário completo.
+ */
+function normalizarEdicaoOS(corpo) {
+  const leitores = {
+    clienteNome: () => exigirTexto(corpo.clienteNome, 'nome do cliente', { min: 2, max: 120 }),
+    clienteTelefone: () => exigirTelefone(corpo.clienteTelefone, 'telefone do cliente'),
+    marca: () => exigirTexto(corpo.marca, 'marca', { max: 60 }),
+    modelo: () => exigirTexto(corpo.modelo, 'modelo', { max: 80 }),
+    cor: () => exigirTexto(corpo.cor, 'cor', { max: 40, opcional: true }),
+    imei: () => exigirTexto(corpo.imei, 'IMEI / número de série', { max: 60, opcional: true }),
+    acessorios: () => exigirTexto(corpo.acessorios, 'acessórios deixados', { max: 300, opcional: true }),
+    defeitoRelatado: () => exigirTexto(corpo.defeitoRelatado, 'defeito relatado', { min: 3, max: 2000 }),
+    estadoAparelho: () => exigirTexto(corpo.estadoAparelho, 'estado do aparelho', { max: 1000, opcional: true }),
+    valor: () => exigirNumero(corpo.valor, 'valor', { min: 0, max: 999999 }),
+  };
+  const dados = {};
+  for (const [campo, ler] of Object.entries(leitores)) {
+    if (corpo[campo] === undefined) continue;
+    dados[campo] = ler();
+  }
+  if (!Object.keys(dados).length) {
+    throw invalido('Nenhum campo para atualizar foi informado.', { campo: 'dados' });
+  }
+  return dados;
+}
+
 export function registrar(rota) {
   /* ----------------------------- Catálogos ------------------------------- */
   rota.get('/api/meta', async (ctx) => {
@@ -180,6 +221,15 @@ export function registrar(rota) {
       status: STATUS_VALIDOS.map((s) => ({ valor: s, rotulo: ROTULOS_STATUS[s] })),
       tiposFoto: TIPOS_FOTO,
       permissoes: ctx.usuario.papel,
+      // O front-end decide pelo modo como enviar vídeos: no modo Blob (Vercel)
+      // o arquivo sobe direto do navegador; no modo local vai pelo servidor.
+      anexos: {
+        modo: modoArmazenamento(),
+        maxFotoBytes: config.maxUploadBytes,
+        maxVideoBytes: config.maxVideoBytes,
+        mimesVideo: MIMES_VIDEO,
+        mimesImagem: MIMES_IMAGEM,
+      },
     };
   });
 
@@ -226,6 +276,23 @@ export function registrar(rota) {
     const os = await buscarOS(osId, ctx.usuario);
     ctx.status = 201;
     return { ordem: os, mensagem: `OS ${os.numero_os} criada com sucesso.` };
+  });
+
+  /* --------------------------------- Edição ------------------------------ */
+  // Correção de dados cadastrais por admin/técnico, com registro no histórico.
+  // Loja, número e data de criação continuam imutáveis (trigger no banco).
+  rota.patch('/api/ordens/:id', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    exigirPermissao(ctx.usuario, 'os.editar');
+    const dados = normalizarEdicaoOS(ctx.corpo ?? {});
+    const { ordem, alteracoes } = await editarOS(Number(ctx.params.id), ctx.usuario, dados);
+    return {
+      ordem,
+      alteracoes,
+      mensagem: alteracoes.length
+        ? `Dados da OS atualizados (${alteracoes.length} mudança${alteracoes.length > 1 ? 's' : ''}).`
+        : 'Nenhuma mudança para salvar.',
+    };
   });
 
   /* -------------------------------- Detalhe ------------------------------ */
@@ -497,18 +564,20 @@ export function registrar(rota) {
   rota.post('/api/ordens/:id/fotos', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
     const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
-    const tipo = exigirEnum(ctx.query.tipo ?? ctx.corpo?.tipo, 'tipo da foto', TIPOS_FOTO);
+    const tipo = exigirEnum(ctx.query.tipo ?? ctx.corpo?.tipo, 'tipo do anexo', TIPOS_FOTO);
     if (tipo === 'entrada') exigirPermissao(ctx.usuario, 'os.criar');
     else exigirPermissao(ctx.usuario, 'os.ver');
 
     const legenda = ctx.query.legenda ? String(ctx.query.legenda).slice(0, 200) : null;
-    const buffer = await lerCorpoBinario(ctx.req);
-    const mime = ctx.req.headers['content-type'] ?? 'image/jpeg';
+    const mime = String(ctx.req.headers['content-type'] ?? 'image/jpeg').split(';')[0].trim();
+    // Vídeos têm teto próprio; o limite do corpo considera a diferença com folga.
+    const limite = mime.startsWith('video/') ? config.maxVideoBytes + 65536 : config.maxUploadBytes + 65536;
+    const buffer = await lerCorpoBinario(ctx.req, limite);
     const foto = await salvarFoto({ os, usuario: ctx.usuario, tipo, buffer, mime, legenda });
     ctx.status = 201;
     return {
-      foto: { id: foto.id, tipo: foto.tipo, criado_em: foto.criado_em, legenda: foto.legenda },
-      mensagem: 'Foto anexada com sucesso.',
+      foto: { id: foto.id, tipo: foto.tipo, mime: foto.mime, criado_em: foto.criado_em, legenda: foto.legenda },
+      mensagem: `${foto.mime?.startsWith('video/') ? 'Vídeo' : 'Foto'} anexado com sucesso.`,
     };
   });
 
@@ -520,9 +589,19 @@ export function registrar(rota) {
     if (!escopoRede(ctx.usuario) && Number(os.loja_id) !== Number(ctx.usuario.lojaId)) {
       throw semPermissao('Esta foto pertence a outra loja.');
     }
-    // A imagem vem do disco ou do Blob, mas só depois da checagem de sessão
-    // e de loja — nunca é exposta diretamente.
-    ctx.arquivo = await lerArquivoFoto(foto);
+    // A imagem/vídeo vem do disco ou do Blob, mas só depois da checagem de
+    // sessão e de loja — nunca é exposta diretamente. Requisições com Range
+    // (player de vídeo no Safari/iOS) recebem 206 com o trecho pedido.
+    const total = Number(foto.tamanho) || 0;
+    const faixa = analisarFaixa(ctx.req.headers.range, total);
+    if (faixa?.invalida) {
+      ctx.faixaInvalida = true;
+      ctx.totalAnexo = total;
+      return null;
+    }
+    ctx.totalAnexo = total;
+    ctx.arquivo = await lerArquivoFoto(foto, { faixa });
+    if (faixa && ctx.arquivo) ctx.arquivo.faixa = { inicio: faixa.inicio, fim: faixa.fim };
     return null;
   });
 
@@ -536,7 +615,108 @@ export function registrar(rota) {
       throw semPermissao('Esta foto pertence a outra loja.');
     }
     await excluirFoto(Number(ctx.params.id), ctx.usuario);
-    return { mensagem: 'Foto removida definitivamente.' };
+    return { mensagem: 'Anexo removido definitivamente.' };
+  });
+
+  /* --------------------- Vídeo direto ao Blob (Vercel) ------------------- */
+  // Vídeos grandes não passam pela função serverless (limite de corpo da
+  // Vercel): o navegador envia direto ao Blob com um token de cliente gerado
+  // aqui — restrito ao caminho, à família de conteúdo e ao tamanho daqui.
+  rota.post('/api/anexos/blob', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    if (modoArmazenamento() !== 'blob') {
+      throw invalido('O envio direto ao Blob só está disponível com o armazenamento em Blob (Vercel).');
+    }
+    if (ctx.corpo?.type !== 'blob.generate-client-token') {
+      throw invalido('Evento de upload desconhecido.', { campo: 'type' });
+    }
+
+    const payload = ctx.corpo.payload ?? {};
+    let pedido = {};
+    try {
+      pedido = payload.clientPayload ? JSON.parse(payload.clientPayload) : {};
+    } catch {
+      throw invalido('Payload do anexo inválido.', { campo: 'clientPayload' });
+    }
+
+    const os = await buscarOS(Number(pedido.osId), ctx.usuario);
+    const tipo = exigirEnum(pedido.tipo, 'tipo do anexo', TIPOS_FOTO);
+    if (tipo === 'entrada') exigirPermissao(ctx.usuario, 'os.criar');
+    else exigirPermissao(ctx.usuario, 'os.ver');
+
+    const contentType = String(pedido.contentType ?? '').toLowerCase();
+    if (!MIMES_VIDEO.includes(contentType)) {
+      throw invalido('O envio direto é reservado a vídeos (MP4, MOV ou WebM).', { campo: 'contentType' });
+    }
+
+    const pathname = String(payload.pathname ?? '');
+    // O caminho só pode ficar dentro da própria OS — nada de sobrescrever
+    // anexos de outra ordem ou escrever fora de fotos/.
+    if (!pathname.startsWith(`fotos/${os.id}/`) || !/[a-z0-9-]+\.[a-z0-9]{2,5}$/i.test(pathname)) {
+      throw invalido('Caminho de upload inválido.', { campo: 'pathname' });
+    }
+
+    const clientToken = await tokenUploadCliente({
+      pathname,
+      contentType,
+      maximumSizeInBytes: config.maxVideoBytes,
+      tokenPayload: {
+        osId: String(os.id),
+        usuarioId: String(ctx.usuario.id),
+        tipo,
+        legenda: typeof pedido.legenda === 'string' ? pedido.legenda.slice(0, 200) : null,
+      },
+    });
+    return { type: 'blob.generate-client-token', clientToken };
+  });
+
+  // Confirmação do upload direto: valida os metadados reais no Blob antes de
+  // registrar no histórico (idempotente — repetir não duplica o anexo).
+  rota.post('/api/ordens/:id/anexos/blob/confirmar', async (ctx) => {
+    exigirAutenticacao(ctx.usuario);
+    if (modoArmazenamento() !== 'blob') {
+      throw invalido('O envio direto ao Blob só está disponível com o armazenamento em Blob (Vercel).');
+    }
+    const os = await buscarOS(Number(ctx.params.id), ctx.usuario);
+    const tipo = exigirEnum(ctx.corpo?.tipo, 'tipo do anexo', TIPOS_FOTO);
+    if (tipo === 'entrada') exigirPermissao(ctx.usuario, 'os.criar');
+    else exigirPermissao(ctx.usuario, 'os.ver');
+
+    const url = exigirTexto(ctx.corpo?.url, 'endereço do anexo', { max: 700 });
+    if (!/^https:\/\/[a-z0-9-]+\.(public|private)\.blob\.vercel-storage\.com\//i.test(url)) {
+      throw invalido('Endereço de anexo inválido.', { campo: 'url' });
+    }
+
+    const legenda = ctx.corpo?.legenda ? String(ctx.corpo.legenda).slice(0, 200) : null;
+    const meta = await metadadosRemotos(url);
+    if (!meta) throw naoEncontrado('O vídeo enviado não foi encontrado no armazenamento.');
+    if (!String(meta.pathname ?? '').startsWith(`fotos/${os.id}/`)) {
+      throw invalido('O anexo enviado não pertence a esta OS.', { campo: 'url' });
+    }
+    if (!String(meta.contentType ?? '').startsWith('video/')) {
+      throw invalido('O envio direto é reservado a vídeos.', { campo: 'url' });
+    }
+    if (Number(meta.size) > config.maxVideoBytes) {
+      throw new ErroApp(`Vídeo maior que o limite de ${Math.round(config.maxVideoBytes / 1024 / 1024)} MB.`, {
+        status: 413,
+        codigo: 'arquivo_muito_grande',
+      });
+    }
+
+    const foto = await registrarAnexoRemoto({
+      os,
+      usuario: ctx.usuario,
+      tipo,
+      arquivo: url,
+      mime: meta.contentType,
+      tamanho: meta.size,
+      legenda,
+    });
+    ctx.status = 201;
+    return {
+      foto: { id: foto.id, tipo: foto.tipo, mime: foto.mime, criado_em: foto.criado_em, legenda: foto.legenda },
+      mensagem: 'Vídeo anexado com sucesso.',
+    };
   });
 
   /* ------------------------------ Exportação ----------------------------- */
@@ -616,6 +796,7 @@ function acoesDisponiveis(os, usuario) {
     podeRetirar: os.status === STATUS.PRONTO && pode(usuario, 'os.retirar'),
     podeComentar: pode(usuario, 'os.comentar') && os.status !== STATUS.RETIRADO,
     podeAnexarFoto: os.status !== STATUS.RETIRADO,
+    podeEditar: pode(usuario, 'os.editar'),
     podeCancelar: os.status !== STATUS.RETIRADO && acessoTotal(usuario),
     podeReabrir: os.status === STATUS.CANCELADO && acessoTotal(usuario),
     podeGarantia:

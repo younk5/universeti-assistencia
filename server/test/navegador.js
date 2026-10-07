@@ -38,6 +38,13 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
+// MP4 mínimo (caixa `ftyp`) para o teste de anexo em vídeo.
+const MP4_FALSO = Buffer.concat([
+  Buffer.from([0x00, 0x00, 0x00, 0x18]),
+  Buffer.from('ftypisomisommp42', 'ascii'),
+  Buffer.alloc(96, 0xab),
+]);
+
 function localizarChrome() {
   const candidatos = [
     process.env.CHROME_PATH,
@@ -404,6 +411,107 @@ try {
   ok(tela.errosNovos.length === 0, 'detalhe sem erros de console', tela.errosNovos.join(' | '));
   ok(tela.excecoesNovas.length === 0, 'detalhe sem exceções', tela.excecoesNovas.join(' | '));
 
+  titulo('Editar dados da OS (admin)');
+  const clicouEditar = await avaliar(
+    `(() => {
+      const botao = [...document.querySelectorAll('.painel-acoes .btn')].find((b) => b.textContent.includes('Editar dados'));
+      if (!botao) return 'ausente';
+      botao.click();
+      return 'clicou';
+    })()`,
+  );
+  await esperar(800);
+  ok(clicouEditar === 'clicou', 'botão "Editar dados" disponível para o admin', clicouEditar);
+  const modalEdicao = await avaliar(`document.querySelector('.modal')?.innerText ?? ''`);
+  ok(modalEdicao.includes('Editar dados da OS'), 'modal de edição abre', modalEdicao.slice(0, 120));
+  ok(
+    modalEdicao.includes('Nome do cliente') && modalEdicao.includes('WhatsApp') && modalEdicao.includes('IMEI'),
+    'campos do cliente e do aparelho disponíveis para correção',
+  );
+  ok(modalEdicao.includes('fica registrada no histórico'), 'modal avisa que a alteração fica auditada');
+
+  const resultadoEdicao = await avaliar(`(async () => {
+    const campoNome = document.querySelector('.modal .entrada');
+    campoNome.value = 'Cliente Editado pela UI';
+    campoNome.dispatchEvent(new Event('input', { bubbles: true }));
+    const defeito = document.querySelector('.modal .area-texto');
+    defeito.value = 'Defeito corrigido pelo teste de interface';
+    defeito.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.modal form').requestSubmit();
+    await new Promise((r) => setTimeout(r, 2400));
+    return { modalAberto: Boolean(document.querySelector('.modal')), corpo: document.body.innerText };
+  })()`);
+  ok(!resultadoEdicao.modalAberto, 'modal fecha após salvar a edição');
+  ok(resultadoEdicao.corpo.includes('Cliente Editado pela UI'), 'edição aparece na tela da OS');
+  ok(resultadoEdicao.corpo.includes('Dados atualizados'), 'histórico registra a edição com autor', resultadoEdicao.corpo.slice(0, 100));
+  const conferenciaEdicao = await fetch(`${base}/api/ordens/${osId}`, { headers: { Cookie: cookieSessao } })
+    .then((res) => res.json());
+  ok(
+    conferenciaEdicao.ordem.cliente_nome === 'Cliente Editado pela UI' &&
+      conferenciaEdicao.eventos.some((e) => e.tipo_evento === 'edicao'),
+    'servidor confirma a edição e o evento de auditoria',
+  );
+  ok(tela.errosNovos.length === 0, 'edição sem erros de console', tela.errosNovos.join(' | '));
+
+  titulo('Vídeo anexado pela interface (galeria)');
+  const caminhoVideo = path.join(dirTemp, 'clip.mp4');
+  fs.writeFileSync(caminhoVideo, MP4_FALSO);
+  await avaliar(
+    `(() => {
+      const botao = [...document.querySelectorAll('.painel-acoes .btn')].find((b) => b.textContent.includes('Anexar foto ou vídeo'));
+      if (!botao) return 'ausente';
+      botao.click();
+      return 'clicou';
+    })()`,
+  );
+  await esperar(700);
+  const modalAnexo = await avaliar(`document.querySelector('.modal')?.innerText ?? ''`);
+  ok(modalAnexo.includes('Anexar foto ou vídeo'), 'modal de anexo aceita foto ou vídeo', modalAnexo.slice(0, 120));
+
+  await cdp.enviar('DOM.enable');
+  const docAnexo = await cdp.enviar('DOM.getDocument');
+  const noGaleria = await cdp.enviar('DOM.querySelector', {
+    nodeId: docAnexo.root.nodeId,
+    selector: `.modal input[type=file][accept='image/*,video/*']`,
+  });
+  await cdp.enviar('DOM.setFileInputFiles', { files: [caminhoVideo], nodeId: noGaleria.nodeId });
+  await esperar(1300);
+  const previewVideo = await avaliar(
+    `(() => {
+      const video = document.querySelector('.modal .preview-foto video');
+      const barra = document.querySelector('.modal .preview-foto__barra')?.innerText ?? '';
+      return { temVideo: Boolean(video), barra };
+    })()`,
+  );
+  ok(previewVideo.temVideo, 'pré-visualização do vídeo aparece antes de enviar');
+  ok(previewVideo.barra.includes('Vídeo'), 'a barra informa que é vídeo e não é comprimido', previewVideo.barra);
+
+  await avaliar(
+    `(() => {
+      const botao = [...document.querySelectorAll('.modal .btn')].find((b) => b.textContent.includes('Anexar na OS'));
+      botao.click();
+      return true;
+    })()`,
+  );
+  await esperar(2600);
+  const aposAnexo = await avaliar(
+    `({
+      modalAberto: Boolean(document.querySelector('.modal')),
+      miniaturas: document.querySelectorAll('.miniatura').length,
+      temSeloVideo: Boolean(document.querySelector('.miniatura__play')),
+    })`,
+  );
+  ok(!aposAnexo.modalAberto, 'modal de anexo fecha após o envio');
+  ok(aposAnexo.temSeloVideo, 'vídeo anexado aparece na galeria com selo de reprodução');
+  const anexosServidor = await fetch(`${base}/api/ordens/${osId}`, { headers: { Cookie: cookieSessao } })
+    .then((res) => res.json());
+  ok(
+    anexosServidor.fotos.some((f) => String(f.mime).startsWith('video/')),
+    'servidor registra o vídeo na OS',
+    JSON.stringify(anexosServidor.fotos.map((f) => f.mime)),
+  );
+  ok(tela.errosNovos.length === 0, 'anexo de vídeo sem erros de console', tela.errosNovos.join(' | '));
+
   titulo('Documentos em PDF');
   const pdfInfo = await avaliar(`(async () => {
     const { criarDocumento } = await import('/js/documento.js');
@@ -431,11 +539,17 @@ try {
   titulo('Nova OS (formulário de entrada)');
   tela = await abrir('/nova', 1600);
   ok(tela.texto.includes('Nova ordem de serviço'), 'formulário de entrada renderiza');
-  ok(tela.texto.includes('Foto do aparelho na entrada'), 'campo de foto de entrada presente');
+  ok(tela.texto.includes('Foto ou vídeo do aparelho na entrada'), 'campo de evidência de entrada presente');
   const temCamera = await avaliar(
-    "!!document.querySelector('input[type=file][accept=\"image/*\"][capture=\"environment\"]')",
+    "!!document.querySelector('input[type=file][accept=\\\"image/*\\\"][capture=\\\"environment\\\"]')",
   );
   ok(temCamera, 'input de arquivo configurado para abrir a câmera traseira');
+  const temGaleria = await avaliar(
+    "!!document.querySelector('input[type=file][accept=\\\"image/*,video/*\\\"]:not([capture])')",
+  );
+  ok(temGaleria, 'input da galeria aceita foto e vídeo (sem forçar a câmera)');
+  const botoesCaptura = await avaliar("document.querySelectorAll('.captura__acoes .btn').length");
+  ok(botoesCaptura >= 2, 'área de captura oferece "Tirar foto" e "Foto ou vídeo da galeria"');
 
   const itensChecklist = await avaliar("document.querySelectorAll('.checklist__item').length");
   ok(itensChecklist >= 15, `checklist com ${itensChecklist} opções`);

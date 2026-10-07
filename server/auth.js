@@ -183,7 +183,7 @@ export async function usuarioDaRequisicao(req) {
 
 const PERMISSOES_TOTAIS = [
   'os.criar', 'os.ver', 'os.ver_todas', 'os.assumir', 'os.finalizar',
-  'os.retirar', 'os.comentar', 'os.reabrir', 'admin.lojas', 'admin.usuarios', 'relatorios',
+  'os.retirar', 'os.comentar', 'os.reabrir', 'os.editar', 'admin.lojas', 'admin.usuarios', 'relatorios',
 ];
 
 // Técnico e administrador têm exatamente as mesmas permissões.

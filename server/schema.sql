@@ -176,8 +176,9 @@ BEGIN
   SELECT RAISE(ABORT, 'Registro de auditoria: fotos_os nao pode ser excluido.');
 END;
 
--- A OS em si pode evoluir de status, mas nunca volta para 'aguardando' nem
--- muda de loja / cliente depois de criada.
+-- A OS em si pode evoluir de status e ter os dados cadastrais corrigidos por
+-- admin/técnico (com registro no histórico), mas nunca troca de loja, número
+-- ou data de criação, e uma OS retirada não volta de status.
 CREATE TRIGGER IF NOT EXISTS trg_os_campos_imutaveis
 BEFORE UPDATE ON ordens_servico
 BEGIN
@@ -186,8 +187,6 @@ BEGIN
       THEN RAISE(ABORT, 'A loja de entrada da OS nao pode ser alterada.')
     WHEN OLD.numero_os <> NEW.numero_os
       THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
-    WHEN OLD.cliente_nome <> NEW.cliente_nome
-      THEN RAISE(ABORT, 'O nome do cliente nao pode ser alterado apos o cadastro.')
     WHEN OLD.criado_em <> NEW.criado_em
       THEN RAISE(ABORT, 'A data de criacao da OS nao pode ser alterada.')
     WHEN OLD.status = 'retirado' AND NEW.status <> 'retirado'

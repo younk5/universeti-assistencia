@@ -16,10 +16,29 @@ export async function salvar(buffer, nomeArquivo) {
   return nomeArquivo;
 }
 
-export async function ler(referencia) {
+/**
+ * Lê o arquivo inteiro ou apenas uma faixa (Range) — o player de vídeo faz
+ * requisições parciais, então ler só o pedaço evita carregar o vídeo completo
+ * em memória a cada avanço da reprodução.
+ */
+export async function ler(referencia, { faixa = null } = {}) {
   const destino = path.join(caminhos.uploads, path.basename(referencia));
   if (!fs.existsSync(destino)) return null;
-  return fs.readFileSync(destino);
+  if (!faixa) return fs.readFileSync(destino);
+
+  const tamanho = fs.statSync(destino).size;
+  const inicio = Math.max(0, Math.min(Number(faixa.inicio) || 0, tamanho - 1));
+  const fim = Math.max(inicio, Math.min(Number(faixa.fim) || tamanho - 1, tamanho - 1));
+  const comprimento = fim - inicio + 1;
+
+  const buffer = Buffer.alloc(comprimento);
+  const descritor = fs.openSync(destino, 'r');
+  try {
+    fs.readSync(descritor, buffer, 0, comprimento, inicio);
+  } finally {
+    fs.closeSync(descritor);
+  }
+  return buffer;
 }
 
 export async function remover(referencia) {

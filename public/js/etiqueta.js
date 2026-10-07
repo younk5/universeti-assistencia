@@ -91,12 +91,14 @@ export async function baixarEtiquetaPdf(ordem, { copias = 1 } = {}) {
 /* -------------------------------------------------------------------------- */
 
 export async function baixarComprovantePdf(ordem, eventos = [], fotos = []) {
-  const outrasFotos = fotos.filter((f) => f.tipo !== 'assinatura');
-  const assinatura = fotos.find((f) => f.tipo === 'assinatura');
+  // Vídeos não entram no PDF (as páginas são JPEG); imagens e assinatura sim.
+  const apenasImagens = fotos.filter((f) => !String(f.mime ?? '').toLowerCase().startsWith('video/'));
+  const outrasFotos = apenasImagens.filter((f) => f.tipo !== 'assinatura');
+  const assinatura = apenasImagens.find((f) => f.tipo === 'assinatura');
 
   const imagens = {};
   await Promise.all(
-    fotos.map((foto) =>
+    apenasImagens.map((foto) =>
       carregarImagem(`/api/fotos/${foto.id}/raw`)
         .then((img) => {
           imagens[foto.id] = img;

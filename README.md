@@ -48,8 +48,10 @@ npm start        # sobe o servidor em http://localhost:3000
 4. No Chrome/Safari use **“Adicionar à tela de início”** para virar um app.
 
 > O upload de fotos usa a câmera traseira direto pelo navegador
-> (`<input capture="environment">`) e comprime a imagem antes de enviar,
-> para não estourar o 4G do balcão.
+> (`<input capture="environment">`) ou a galeria — sem o atributo capture, o
+> navegador deixa escolher entre câmera e rolete. As imagens são comprimidas
+> antes de enviar, para não estourar o 4G do balcão; vídeos (opcionais) sobem
+> sem compressão direto para o armazenamento quando o sistema roda na Vercel.
 
 ---
 
@@ -106,6 +108,8 @@ rede). O atendente fica restrito à própria loja.
 | Ver OS | própria loja | todas as lojas |
 | Assumir aparelho na bancada | — | ✅ |
 | Adicionar diagnóstico / anotação | ✅ | ✅ |
+| Anexar foto ou vídeo na OS | ✅ | ✅ |
+| Editar dados da OS (corrigir cadastro) | — | ✅ |
 | Concluir serviço (foto + valor) | — | ✅ |
 | Registrar retirada + assinatura | ✅ | ✅ |
 | Cancelar / reabrir / excluir OS | — | ✅ |
@@ -138,9 +142,12 @@ BEGIN
 END;
 ```
 
-Além disso, campos-chave da OS (loja de entrada, número, nome do cliente, data de
-criação) não podem ser alterados depois do cadastro, e uma OS já retirada não
-volta para trás.
+Além disso, campos-chave da OS (loja de entrada, número e data de criação) não
+podem ser alterados depois do cadastro, e uma OS já retirada não volta para
+trás. Os demais dados cadastrais podem ser **corrigidos por admin/técnico** no
+botão **Editar dados** — cada mudança vira um evento “Dados atualizados” no
+histórico, com o valor anterior e o novo. O nome do cliente também é editável
+por esse caminho auditado.
 
 ---
 
@@ -176,8 +183,17 @@ volta para trás.
 
 ## Detalhes de produto
 
-- **Foto na entrada e na conclusão** com compressão no cliente (redimensiona para
-  até 1600 px e recomprime em JPEG até caber em ~900 KB).
+- **Foto na entrada, na conclusão e na retirada** com compressão no cliente
+  (redimensiona para até 1600 px e recomprime em JPEG até caber em ~900 KB).
+- **Foto da galeria e vídeos**: no celular, a área de anexo oferece **Tirar
+  foto** (câmera traseira) e **Foto ou vídeo da galeria** — dá para anexar uma
+  imagem que já está no celular ou gravar um vídeo curto (MP4/MOV/WebM, até
+  128 MB). Vídeos não são comprimidos: no modo Blob (Vercel) o arquivo sobe
+  **direto do navegador para o armazenamento**, com autorização gerada pelo
+  servidor; no modo local vai pelo próprio servidor. O player de vídeo usa
+  requisições `Range` (206) para tocar no Safari/iOS.
+- **Editar dados da OS**: correção de cliente, aparelho, defeito e valor por
+  admin/técnico, com registro “antes → depois” na trilha de auditoria.
 - **Etiqueta e comprovante em PDF** (gerados no navegador, sem dependências): a
   etiqueta traz a marca, o número da OS em destaque, os dados do cliente e do
   aparelho, o defeito e o código de barras Code 128; o comprovante sai em A4 com
@@ -223,9 +239,10 @@ public/
     app.js            bootstrap, roteador e guarda de sessão
     router.js         casamento de rotas por hash
     api.js            cliente HTTP com tratamento de erro amigável
+    anexos.js         envio de anexos (foto comprimida; vídeo direto ao Blob)
     store.js          estado da sessão, permissões e tema
     dom.js            criação de DOM declarativa (h())
-    ui.js             toasts, modais, badges, estados vazios, visualizador de fotos
+    ui.js             toasts, modais, badges, estados vazios, visualizador de mídia
     format.js         datas, moeda, telefone e durações em pt-BR
     image.js          compressão de imagem e recorte de assinatura
     assinatura.js     canvas de assinatura digital
@@ -233,8 +250,11 @@ public/
     documento.js      layout de documentos em canvas (etiqueta e comprovante)
     pdf.js            gerador de PDF sem dependências (imagem JPEG por página)
     etiqueta.js       monta a etiqueta e o comprovante e baixa em PDF
-    components/       captura de foto, cartão de OS, modais do fluxo
+    vendor/           bibliotecas empacotadas (qrcode; SDK do Blob p/ vídeo)
+    components/       captura de foto/vídeo, cartão de OS, modais do fluxo
     pages/            login, painel, nova OS, fila, ordens, detalhe, gestão, conta
+
+server/tools/         gerador do bundle vendor (upload direto ao Vercel Blob)
 
 data/                 criado em tempo de execução (banco + fotos) — não versionar
 ```
@@ -265,13 +285,16 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
   `import` relativo existe (pegou um `import` quebrado que só apareceria no login),
   confere os assets do `index.html` e aponta classes usadas sem estilo no CSS.
 - **Testes de API** — autenticação, criação de OS, upload e download de foto,
-  bloqueio de arquivo que não é imagem, permissões por papel, isolamento entre
+  **upload de vídeo + requisições Range (206/416)**, **edição auditável dos
+  dados da OS (incluindo o bloqueio para atendente)**, bloqueio de arquivo que
+  não é imagem/vídeo, permissões por papel, isolamento entre
   lojas, transições de status, **imutabilidade dos registros de auditoria
   (tentativas de `UPDATE`/`DELETE` bloqueadas por trigger)**, ciclo de vida de
   lojas, busca/filtros e exportação CSV.
 - **Testes de navegador** — sobe o sistema de verdade em um banco temporário,
   controla o Chrome por DevTools Protocol e percorre as telas verificando conteúdo,
   ausência de erros de console e de exceções, formulário de entrada ponta a ponta,
+  **edição de dados da OS pelo modal e envio de vídeo pela galeria**,
   validação, modais, tema claro/escuro, responsividade (sem scroll horizontal em
   360 px e em 1440 px) e o tratamento de rota inexistente. Se o Chrome/Edge não
   estiver instalado, a etapa é ignorada com aviso (`CHROME_PATH` para apontar o
@@ -289,6 +312,9 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
 | `SESSION_SECRET` | `troque-este-segredo-em-producao` | Segredo do HMAC dos tokens |
 | `SENHA_SECRET` | valor de `SESSION_SECRET` | Chave que cifra as senhas consultáveis (AES-256-GCM). Defina uma própria e estável; trocá-la torna as senhas antigas ilegíveis |
 | `SESSION_TTL_DIAS` | `30` | Validade da sessão |
+| `VIDEO_MAX_MB` | `128` | Tamanho máximo de vídeo por anexo (MB) |
+| `STORAGE_DRIVER` | — | `blob` força o uso do Vercel Blob fora da Vercel |
+| `BLOB_READ_WRITE_TOKEN` | — | Token do Vercel Blob (fotos e vídeos na nuvem) |
 | `ADMIN_NOME` | `UniverseTI` | Nome do admin criado quando o banco está vazio |
 | `ADMIN_EMAIL` | `universeti` | Login do admin inicial |
 | `ADMIN_SENHA` | `galaxy2026!` | Senha do admin inicial |

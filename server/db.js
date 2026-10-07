@@ -228,6 +228,48 @@ export async function aplicarMigracoes(atual) {
 
   await garantirColunaSenhaCifrada(atual);
   await relaxarLojaUsuarios(atual);
+  await recriarTriggerCamposOS(atual);
+}
+
+/**
+ * O nome do cliente passou a ser editável por admin/técnico (com registro no
+ * histórico). `CREATE TRIGGER IF NOT EXISTS` não substitui um trigger
+ * existente, então a versão antiga — que abortava a troca do nome — precisa
+ * ser recriada explicitamente nos bancos que já existiam.
+ */
+async function recriarTriggerCamposOS(atual) {
+  let sql = '';
+  try {
+    const linhas = await atual.consultar(
+      "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_os_campos_imutaveis'",
+    );
+    sql = linhas?.[0]?.sql ?? '';
+  } catch {
+    return; // driver sem sqlite_master: o schema novo já cuida de bancos vazios
+  }
+  if (!sql || !/cliente_nome/.test(sql)) return;
+
+  try {
+    await atual.executar('DROP TRIGGER IF EXISTS trg_os_campos_imutaveis');
+    await atual.executar(`
+      CREATE TRIGGER IF NOT EXISTS trg_os_campos_imutaveis
+      BEFORE UPDATE ON ordens_servico
+      BEGIN
+        SELECT CASE
+          WHEN OLD.loja_id <> NEW.loja_id
+            THEN RAISE(ABORT, 'A loja de entrada da OS nao pode ser alterada.')
+          WHEN OLD.numero_os <> NEW.numero_os
+            THEN RAISE(ABORT, 'O numero da OS nao pode ser alterado.')
+          WHEN OLD.criado_em <> NEW.criado_em
+            THEN RAISE(ABORT, 'A data de criacao da OS nao pode ser alterada.')
+          WHEN OLD.status = 'retirado' AND NEW.status <> 'retirado'
+            THEN RAISE(ABORT, 'Uma OS ja retirada nao pode mudar de status.')
+        END;
+      END`);
+    console.log('[migração] trigger de campos da OS atualizado (edição de dados com auditoria).');
+  } catch (erro) {
+    console.warn('[migração] falhou ao recriar o trigger de campos da OS:', erro?.message ?? erro);
+  }
 }
 
 /**
