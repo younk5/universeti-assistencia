@@ -55,6 +55,7 @@ const CAMINHOS = {
   filtroX: '<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/><path d="m17 3 4 4M21 3l-4 4"/>',
   garra: '<path d="M12 3v6M8 9h8l1 6H7l1-6ZM10 15v6M14 15v6"/>',
   curva: '<path d="M3 20V8a5 5 0 0 1 5-5h13"/><path d="m17 1 4 2-4 2"/>',
+  sino: '<path d="M18 8a6 6 0 0 0-12 0c0 5-2 6-2 6h16s-2-1-2-6"/><path d="M10.3 20a2 2 0 0 0 3.4 0"/>',
 };
 
 export function iconeSvg(nome, { tamanho = 20, classe = '', traco = 1.8 } = {}) {

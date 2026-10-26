@@ -429,9 +429,31 @@ try {
     'campos do cliente e do aparelho disponíveis para correção',
   );
   ok(modalEdicao.includes('Loja de entrada'), 'campo de loja de entrada disponível para correção');
+  ok(
+    modalEdicao.includes('Número da OS') &&
+      modalEdicao.includes('Técnico responsável') &&
+      modalEdicao.includes('Prioridade'),
+    'edição traz número, técnico e prioridade da OS',
+    modalEdicao.slice(0, 160),
+  );
+  ok(
+    modalEdicao.includes('Status') &&
+      modalEdicao.includes('Garantia (dias)') &&
+      modalEdicao.includes('Forma de pagamento'),
+    'edição traz status, garantia e pagamento',
+  );
+  ok(
+    modalEdicao.toLowerCase().includes('checklist técnico'),
+    'edição traz o checklist técnico da entrada',
+    modalEdicao.slice(0, 200),
+  );
+  ok(
+    modalEdicao.includes('quem lançou a OS não mudam'),
+    'edição avisa o que continua imutável (data de entrada e autor)',
+  );
   const lojaNoModal = await avaliar(
     `(() => {
-      const seletor = document.querySelector('.modal select.selecao');
+      const seletor = document.querySelector('.modal select[data-campo="loja"]');
       if (!seletor) return null;
       return { opcoes: seletor.options.length, escolhida: seletor.options[seletor.selectedIndex]?.textContent ?? '' };
     })()`,
@@ -440,6 +462,14 @@ try {
     lojaNoModal && lojaNoModal.opcoes >= 3 && lojaNoModal.escolhida.length > 0,
     'seletor de loja lista as lojas e já vem com a loja atual marcada',
     JSON.stringify(lojaNoModal),
+  );
+  const opcoesStatus = await avaliar(
+    `Array.from(document.querySelector('.modal select[data-campo="status"]')?.options ?? []).map((o) => o.textContent)`,
+  );
+  ok(
+    Array.isArray(opcoesStatus) && opcoesStatus.some((texto) => texto.includes('atual')),
+    'seletor de status parte da situação atual da OS',
+    JSON.stringify(opcoesStatus),
   );
   ok(modalEdicao.includes('acompanha a loja de destino'), 'modal avisa que o número acompanha a loja ao trocar');
   ok(modalEdicao.includes('fica registrada no histórico'), 'modal avisa que a alteração fica auditada');
@@ -466,6 +496,79 @@ try {
     'servidor confirma a edição e o evento de auditoria',
   );
   ok(tela.errosNovos.length === 0, 'edição sem erros de console', tela.errosNovos.join(' | '));
+
+  titulo('Avisos de nova OS (sino, central e push)');
+  // Um aparelho novo entra pelo atendente da loja; o admin precisa ser avisado.
+  const loginAtendente = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: 'atendente.centro@universeti.com.br', senha: 'galaxy2026!' }),
+  });
+  const cookieAtendente = (loginAtendente.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
+  ok(loginAtendente.status === 200, 'atendente da loja autentica para lançar a OS de teste');
+
+  const osDoAviso = await fetch(`${base}/api/ordens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookieAtendente },
+    body: JSON.stringify({
+      clienteNome: 'Cliente Aviso Navegador',
+      clienteTelefone: '(11) 97777-1234',
+      marca: 'Motorola',
+      modelo: 'Moto G54',
+      defeitoRelatado: 'Bateria não segura carga durante o dia.',
+    }),
+  }).then((resposta) => resposta.json());
+  const numeroAviso = osDoAviso.ordem?.numero_os;
+  ok(Boolean(numeroAviso), `OS de teste criada pela atendente (${numeroAviso})`, JSON.stringify(osDoAviso).slice(0, 160));
+
+  tela = await abrir('/painel', 2200);
+  await esperar(1500);
+  const sino = await avaliar(`(() => {
+    const botao = document.querySelector('.topbar__sino');
+    const contador = document.querySelector('.topbar__acoes [data-badge-avisos]');
+    return {
+      existe: Boolean(botao),
+      texto: contador?.textContent ?? '',
+      oculto: contador ? contador.classList.contains('oculto') : true,
+    };
+  })()`);
+  ok(sino.existe, 'sino de avisos aparece na barra superior');
+  ok(!sino.oculto && Number(sino.texto) >= 1, 'contador do sino mostra aviso não lido', JSON.stringify(sino));
+
+  await avaliar("document.querySelector('.topbar__sino').click()");
+  await esperar(900);
+  const painelAvisos = await avaliar("document.querySelector('.modal')?.innerText ?? ''");
+  ok(painelAvisos.includes('Avisos'), 'central de avisos abre pelo sino', painelAvisos.slice(0, 120));
+  ok(painelAvisos.includes(numeroAviso), 'aviso lista a OS que deu entrada', painelAvisos.slice(0, 200));
+  ok(
+    painelAvisos.includes('Ativar neste aparelho') || painelAvisos.includes('Enviar teste'),
+    'central oferece ativar as notificações do aparelho',
+    painelAvisos.slice(0, 240),
+  );
+
+  const marcouAvisos = await avaliar(`(async () => {
+    const botao = [...document.querySelectorAll('.modal .btn')].find((b) => b.textContent.includes('Marcar todas'));
+    if (!botao) return 'ausente';
+    botao.click();
+    await new Promise((r) => setTimeout(r, 1200));
+    const contador = document.querySelector('.topbar__acoes [data-badge-avisos]');
+    return contador ? (contador.classList.contains('oculto') ? 'oculto' : contador.textContent) : 'sem contador';
+  })()`);
+  ok(marcouAvisos === 'oculto', 'marcar todas como lidas zera o contador do sino', String(marcouAvisos));
+  await avaliar("document.querySelector('.modal__fechar')?.click()");
+  await esperar(400);
+
+  const registroSw = await avaliar(`(async () => {
+    if (!('serviceWorker' in navigator)) return 'sem-suporte';
+    const registro = await navigator.serviceWorker.getRegistration();
+    return registro?.active?.scriptURL ?? registro?.installing?.scriptURL ?? 'nenhum';
+  })()`);
+  ok(String(registroSw).includes('/sw.js'), 'service worker das notificações registrado', String(registroSw));
+  ok(filtrar(tela.errosNovos).length === 0, 'avisos sem erros de console', tela.errosNovos.join(' | '));
+  ok(tela.excecoesNovas.length === 0, 'avisos sem exceções', tela.excecoesNovas.join(' | '));
+
+  // Volta para a OS usada no restante do roteiro.
+  tela = await abrir(`/ordens/${osId}`, 2200);
 
   titulo('Vídeo anexado pela interface (galeria)');
   const caminhoVideo = path.join(dirTemp, 'clip.mp4');

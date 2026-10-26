@@ -194,11 +194,19 @@ cliente também é editável por esse caminho auditado.
   **direto do navegador para o armazenamento**, com autorização gerada pelo
   servidor; no modo local vai pelo próprio servidor. O player de vídeo usa
   requisições `Range` (206) para tocar no Safari/iOS.
-- **Editar dados da OS**: correção de cliente, aparelho, defeito, valor e
-  **loja de entrada** por admin/técnico, com registro “antes → depois” na
-  trilha de auditoria. Ao trocar de loja, o número da OS passa para a
-  numeração da loja de destino (o número antigo segue no histórico, na busca e
-  no rastreio do cliente).
+- **Editar tudo na OS** (admin/técnico): cliente, aparelho, loja de entrada,
+  número da OS, status (dentro do fluxo normal), técnico responsável,
+  prioridade, datas de início/conclusão/retirada, valor, pagamento, garantia e
+  checklist técnico — com registro “antes → depois” na trilha de auditoria.
+  Data de criação e autor da entrada não mudam. A senha do aparelho entra na
+  OS, mas nunca é copiada para o histórico.
+- **Aviso de aparelho novo, sem abrir o sistema**: quando alguém abre uma OS, o
+  sino mostra o aviso na hora (com contador e sombra no título da aba) e o
+  **Web Push** faz o celular/computador apitar **com o sistema fechado**.
+  Sem serviço de terceiros: o par de chaves VAPID é gerado no próprio banco e
+  cada aparelho é inscrito em **Avisos → Ativar neste aparelho**, com
+  **Enviar teste** para conferir. No iPhone, o aviso só funciona com o sistema
+  adicionado à Tela de Início (iOS 16.4+).
 - **Etiqueta e comprovante em PDF** (gerados no navegador, sem dependências): a
   etiqueta traz a marca, o número da OS em destaque, os dados do cliente e do
   aparelho, o defeito e o código de barras Code 128; o comprovante sai em A4 com
@@ -275,6 +283,8 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
 - **eventos_os** — trilha de auditoria (tipo, status anterior/novo, autor, data)
 - **exclusoes_log** — registro das exclusões administrativas (tipo, referência, autor, data)
 - **sessoes** — tokens de sessão com expiração
+- **notificacoes** — avisos do sino (um por destinatário, com lido/não lido)
+- **push_inscricoes** — aparelhos inscritos no Web Push (endpoint + chaves do navegador)
 
 ---
 
@@ -283,6 +293,7 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
 ```bash
 npm test           # todas as etapas
 npm run check      # estática do front-end (sintaxe, imports, CSS) — instantâneo
+npm run test:push  # Web Push: chaves VAPID e criptografia do payload
 npm run test:api   # fluxo completo da OS por HTTP
 npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
 ```
@@ -290,6 +301,9 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
 - **Verificação estática** — valida a sintaxe de cada módulo ES, garante que todo
   `import` relativo existe (pegou um `import` quebrado que só apareceria no login),
   confere os assets do `index.html` e aponta classes usadas sem estilo no CSS.
+- **Teste de Web Push** — sobe um serviço de push local, entrega uma notificação
+  real e **decifra o corpo com a chave do navegador**, confere a assinatura
+  ES256 do JWT VAPID, o `aud`/`exp` e o descarte de inscrições mortas (410).
 - **Testes de API** — autenticação, criação de OS, upload e download de foto,
   **upload de vídeo + requisições Range (206/416)**, **edição auditável dos
   dados da OS (incluindo o bloqueio para atendente)**, bloqueio de arquivo que
@@ -300,7 +314,8 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
 - **Testes de navegador** — sobe o sistema de verdade em um banco temporário,
   controla o Chrome por DevTools Protocol e percorre as telas verificando conteúdo,
   ausência de erros de console e de exceções, formulário de entrada ponta a ponta,
-  **edição de dados da OS pelo modal e envio de vídeo pela galeria**,
+  **edição completa da OS pelo modal, central de avisos com o sino e envio de
+  vídeo pela galeria**,
   validação, modais, tema claro/escuro, responsividade (sem scroll horizontal em
   360 px e em 1440 px) e o tratamento de rota inexistente. Se o Chrome/Edge não
   estiver instalado, a etapa é ignorada com aviso (`CHROME_PATH` para apontar o

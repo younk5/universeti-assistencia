@@ -212,7 +212,7 @@ export function paginaOSDetalhe(container, params) {
       acoes.podeEditar
         ? h(
             'button.btn.btn--secundario',
-            { type: 'button', onclick: () => modalEditarOS({ ordem: os, aoConcluir: () => carregar() }) },
+            { type: 'button', onclick: () => modalEditarOS({ ordem: os, transicoes: dados.transicoes, aoConcluir: () => carregar() }) },
             icone('editar', { tamanho: 16 }),
             'Editar dados',
           )

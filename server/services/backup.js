@@ -25,10 +25,12 @@ const TABELAS = [
   {
     nome: 'ordens_servico',
     colunas: [
-      'id', 'numero_os', 'loja_id', 'cliente_nome', 'cliente_telefone', 'tipo_aparelho', 'marca', 'modelo',
-      'cor', 'imei', 'acessorios', 'defeito_relatado', 'estado_aparelho', 'status', 'prioridade', 'valor',
-      'valor_pago', 'atendente_entrada_id', 'tecnico_id', 'recebido_por', 'iniciado_em', 'concluido_em',
-      'retirado_em', 'criado_em', 'atualizado_em',
+      'id', 'numero_os', 'numero_os_anterior', 'loja_id', 'cliente_nome', 'cliente_telefone', 'tipo_aparelho',
+      'marca', 'modelo', 'cor', 'imei', 'acessorios', 'defeito_relatado', 'estado_aparelho', 'status',
+      'prioridade', 'valor', 'valor_pago', 'atendente_entrada_id', 'tecnico_id', 'recebido_por', 'iniciado_em',
+      'concluido_em', 'retirado_em', 'checklist', 'orcamento_valor', 'orcamento_status', 'orcamento_obs',
+      'orcamento_token', 'orcamento_criado_em', 'orcamento_decidido_em', 'forma_pagamento', 'garantia_dias',
+      'garantia_ate', 'garantia_de_os_id', 'criado_em', 'atualizado_em',
     ],
   },
   {
@@ -68,7 +70,20 @@ export async function importarBanco(backup) {
   await suspenderProtecaoAuditoria();
   try {
     await semChavesEstrangeiras(async () => {
-      for (const nome of ['eventos_os', 'fotos_os', 'ordens_servico', 'exclusoes_log', 'usuarios', 'lojas', 'sessoes']) {
+      // Avisos e inscrições de push não fazem parte do backup (são efêmeros) e
+      // são limpos junto para não sobrar registro apontando para usuário/OS
+      // que deixaram de existir depois da restauração.
+      for (const nome of [
+        'notificacoes',
+        'push_inscricoes',
+        'eventos_os',
+        'fotos_os',
+        'ordens_servico',
+        'exclusoes_log',
+        'usuarios',
+        'lojas',
+        'sessoes',
+      ]) {
         await executar(`DELETE FROM ${nome}`);
       }
       for (const tabela of TABELAS) {

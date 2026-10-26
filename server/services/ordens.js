@@ -195,34 +195,72 @@ export async function abrirGarantia(osOrigem, usuario, { descricao = null } = {}
 }
 
 /**
- * Campos de texto/número que o admin/técnico podem corrigir numa OS já
- * criada. A loja de entrada é tratada à parte (com resolução dos nomes para o
- * histórico) e o status segue o fluxo próprio. Número e data de criação
- * continuam imutáveis (garantido por trigger no banco). Cada alteração real
- * vira um evento na trilha de auditoria com o "antes → depois".
+ * Campos de cadastro da OS que o admin/técnico podem corrigir numa OS já
+ * criada. Loja, número, status e técnico têm tratamento próprio (renumeração,
+ * validação de transição e de usuário) e o checklist é resumido no histórico
+ * para nunca expor a senha do aparelho. Número e data de criação continuam
+ * imutáveis (trigger no banco), assim como quem lançou a entrada.
+ * Cada alteração real vira um evento na trilha de auditoria com "antes → depois".
  */
+const ROTULOS_PRIORIDADE = { baixa: 'Baixa', normal: 'Normal', alta: 'Alta' };
+const ROTULOS_PAGAMENTO_INTERNO = {
+  dinheiro: 'Dinheiro',
+  pix: 'Pix',
+  credito: 'Cartão de crédito',
+  debito: 'Cartão de débito',
+  outro: 'Outro',
+};
+
+const valorEmReais = (valor) =>
+  valor === null || valor === undefined ? '—' : `R$ ${Number(valor).toFixed(2).replace('.', ',')}`;
+
+const dataCurta = (valor) => (valor ? new Date(valor).toISOString().slice(0, 16).replace('T', ' ') : '—');
+
 export const CAMPOS_EDITAVEIS_OS = {
   clienteNome: { coluna: 'cliente_nome', rotulo: 'Nome do cliente' },
   clienteTelefone: { coluna: 'cliente_telefone', rotulo: 'Telefone' },
+  tipoAparelho: { coluna: 'tipo_aparelho', rotulo: 'Tipo de aparelho' },
   marca: { coluna: 'marca', rotulo: 'Marca' },
   modelo: { coluna: 'modelo', rotulo: 'Modelo' },
   cor: { coluna: 'cor', rotulo: 'Cor' },
   imei: { coluna: 'imei', rotulo: 'IMEI / série' },
   acessorios: { coluna: 'acessorios', rotulo: 'Acessórios' },
+  recebidoPor: { coluna: 'recebido_por', rotulo: 'Recebido por' },
   defeitoRelatado: { coluna: 'defeito_relatado', rotulo: 'Defeito relatado' },
   estadoAparelho: { coluna: 'estado_aparelho', rotulo: 'Estado do aparelho' },
-  valor: { coluna: 'valor', rotulo: 'Valor' },
+  prioridade: { coluna: 'prioridade', rotulo: 'Prioridade', formatar: (v) => ROTULOS_PRIORIDADE[v] ?? v },
+  valor: { coluna: 'valor', rotulo: 'Valor', formatar: valorEmReais },
+  valorPago: {
+    coluna: 'valor_pago',
+    rotulo: 'Pagamento',
+    formatar: (v) => (Number(v) ? 'Confirmado' : 'Pendente'),
+    comparar: (a, b) => Number(a ?? 0) === Number(b ?? 0),
+  },
+  formaPagamento: {
+    coluna: 'forma_pagamento',
+    rotulo: 'Forma de pagamento',
+    formatar: (v) => ROTULOS_PAGAMENTO_INTERNO[v] ?? v,
+  },
+  garantiaDias: { coluna: 'garantia_dias', rotulo: 'Garantia (dias)', formatar: (v) => (v == null ? '—' : `${v} dias`) },
+  garantiaAte: { coluna: 'garantia_ate', rotulo: 'Garantia até', formatar: dataCurta },
+  iniciadoEm: { coluna: 'iniciado_em', rotulo: 'Início do reparo', formatar: dataCurta },
+  concluidoEm: { coluna: 'concluido_em', rotulo: 'Conclusão', formatar: dataCurta },
+  retiradoEm: { coluna: 'retirado_em', rotulo: 'Retirada', formatar: dataCurta },
+  // O checklist guarda a senha do aparelho: o histórico registra só que foi
+  // alterado, jamais o conteúdo.
+  checklist: { coluna: 'checklist', rotulo: 'Checklist técnico', formatar: (v) => (v ? 'atualizado' : 'vazio') },
 };
 
-function resumirValor(valor) {
+function resumirValor(valor, formatar = null) {
+  if (formatar) return formatar(valor);
   if (valor === null || valor === undefined || valor === '') return '—';
   const texto = String(valor).replace(/\s+/g, ' ').trim();
   return texto.length > 120 ? `${texto.slice(0, 117)}…` : texto;
 }
 
 /**
- * Edição auditável dos dados cadastrais da OS. Só grava o que realmente
- * mudou e devolve a lista de alterações para a interface.
+ * Edição auditável dos dados da OS. Só grava o que realmente mudou e devolve a
+ * lista de alterações para a interface.
  */
 export async function editarOS(osId, usuario, dados) {
   return transacao(async (conexao) => {
@@ -234,13 +272,14 @@ export async function editarOS(osId, usuario, dados) {
 
     const atribuicoes = {};
     const mudancas = [];
-    for (const [campo, { coluna, rotulo }] of Object.entries(CAMPOS_EDITAVEIS_OS)) {
+    for (const [campo, { coluna, rotulo, formatar, comparar }] of Object.entries(CAMPOS_EDITAVEIS_OS)) {
       if (dados[campo] === undefined) continue;
       const novo = dados[campo] === '' ? null : dados[campo];
       const atual = os[coluna] ?? null;
-      if (String(atual ?? '') === String(novo ?? '')) continue;
+      const iguais = comparar ? comparar(atual, novo) : String(atual ?? '') === String(novo ?? '');
+      if (iguais) continue;
       atribuicoes[coluna] = novo;
-      mudancas.push(`${rotulo}: ${resumirValor(atual)} → ${resumirValor(novo)}`);
+      mudancas.push(`${rotulo}: ${resumirValor(atual, formatar)} → ${resumirValor(novo, formatar)}`);
     }
 
     // Loja de entrada: validada contra o cadastro e registrada com os nomes
@@ -248,6 +287,7 @@ export async function editarOS(osId, usuario, dados) {
     // O número da OS acompanha a loja: ganha o código da loja de destino e a
     // próxima sequência livre; o número antigo fica guardado (histórico e
     // rastreio do cliente continuam funcionando).
+    let numeroFinal = os.numero_os;
     if (dados.lojaId !== undefined) {
       const destinoId = Number(dados.lojaId);
       if (destinoId !== Number(os.loja_id)) {
@@ -256,14 +296,70 @@ export async function editarOS(osId, usuario, dados) {
         const origem = await conexao.get('SELECT nome FROM lojas WHERE id = ?', [os.loja_id]);
         atribuicoes.loja_id = destino.id;
         mudancas.push(`Loja de entrada: ${resumirValor(origem?.nome ?? `#${os.loja_id}`)} → ${resumirValor(destino.nome)}`);
+        numeroFinal = await gerarNumeroOS(conexao, destino.id);
+      }
+    }
 
-        const novoNumero = await gerarNumeroOS(conexao, destino.id);
-        if (novoNumero !== os.numero_os) {
-          atribuicoes.numero_os = novoNumero;
-          atribuicoes.numero_os_anterior = os.numero_os;
-          mudancas.push(`Número da OS: ${os.numero_os} → ${novoNumero}`);
+    // Correção manual do número (typo na etiqueta, OS digitada em duplicidade).
+    if (dados.numeroOS !== undefined && dados.numeroOS !== numeroFinal) {
+      const ocupado = await conexao.get('SELECT id FROM ordens_servico WHERE numero_os = ? AND id <> ?', [
+        dados.numeroOS,
+        osId,
+      ]);
+      if (ocupado) throw conflito(`O número ${dados.numeroOS} já está em uso por outra OS.`);
+      numeroFinal = dados.numeroOS;
+    }
+    if (numeroFinal !== os.numero_os) {
+      atribuicoes.numero_os = numeroFinal;
+      atribuicoes.numero_os_anterior = os.numero_os;
+      mudancas.push(`Número da OS: ${os.numero_os} → ${numeroFinal}`);
+    }
+
+    // Técnico responsável: precisa ser conta ativa de técnico/admin (ou ficar
+    // sem responsável). O atendente só enxerga a própria loja — mas ele nem
+    // chega aqui (a edição exige os.editar).
+    if (dados.tecnicoId !== undefined) {
+      const novoId = dados.tecnicoId === null ? null : Number(dados.tecnicoId);
+      const atualId = os.tecnico_id === null || os.tecnico_id === undefined ? null : Number(os.tecnico_id);
+      if (novoId !== atualId) {
+        const anterior = atualId ? await conexao.get('SELECT nome FROM usuarios WHERE id = ?', [atualId]) : null;
+        if (novoId === null) {
+          atribuicoes.tecnico_id = null;
+          mudancas.push(`Técnico responsável: ${anterior?.nome ?? '—'} → sem responsável`);
+        } else {
+          const tecnico = await conexao.get('SELECT id, nome, papel, ativo, loja_id FROM usuarios WHERE id = ?', [novoId]);
+          if (!tecnico || !tecnico.ativo || !['tecnico', 'admin'].includes(tecnico.papel)) {
+            throw invalido('Técnico inválido para assumir a OS.', { campo: 'tecnicoId' });
+          }
+          if (!escopoRede(usuario) && Number(tecnico.loja_id) !== Number(usuario.lojaId)) {
+            throw invalido('Só é possível designar técnico da própria loja.', { campo: 'tecnicoId' });
+          }
+          atribuicoes.tecnico_id = tecnico.id;
+          mudancas.push(`Técnico responsável: ${anterior?.nome ?? '—'} → ${tecnico.nome}`);
         }
       }
+    }
+
+    // Garantia: os dias alterados recalculam a data-limite a partir da retirada
+    // (a não ser que a data tenha sido enviada explicitamente).
+    if (dados.garantiaDias !== undefined && dados.garantiaAte === undefined) {
+      const retirada = atribuicoes.retirado_em ?? os.retirado_em;
+      if (retirada) {
+        const dias = Number(dados.garantiaDias ?? 0);
+        const novaData = dias > 0 ? new Date(new Date(retirada).getTime() + dias * 86400000).toISOString() : null;
+        if (String(novaData ?? '') !== String(os.garantia_ate ?? '') && atribuicoes.garantia_ate === undefined) {
+          atribuicoes.garantia_ate = novaData;
+          mudancas.push(`Garantia até: ${dataCurta(os.garantia_ate)} → ${dataCurta(novaData)}`);
+        }
+      }
+    }
+
+    // Status: mesma máquina de estados usada no fluxo normal — a edição não
+    // serve para pular etapa, e sim para corrigir um passo permitido.
+    if (dados.status !== undefined && dados.status !== os.status) {
+      validarTransicao(os, dados.status);
+      atribuicoes.status = dados.status;
+      mudancas.push(`Status: ${ROTULOS_STATUS[os.status] ?? os.status} → ${ROTULOS_STATUS[dados.status] ?? dados.status}`);
     }
 
     if (!mudancas.length) {
@@ -341,6 +437,8 @@ export async function excluirOS(osId, usuario) {
 
   await suspenderProtecaoAuditoria();
   try {
+    // Avisos apontam para a OS; sem o registro, o sino não deve abrir nada.
+    await executar('DELETE FROM notificacoes WHERE os_id = ?', osId);
     await executar('DELETE FROM fotos_os WHERE os_id = ?', osId);
     await executar('DELETE FROM eventos_os WHERE os_id = ?', osId);
     await executar('DELETE FROM ordens_servico WHERE id = ?', osId);

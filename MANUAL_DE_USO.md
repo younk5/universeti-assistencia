@@ -63,6 +63,7 @@ Existem só dois níveis de acesso:
 | **Fila** | Aparelhos aguardando/em manutenção (bancada) |
 | **Ordens** | Busca e lista de todas as OS, com filtros e exportação |
 | **Gestão** | Lojas, usuários, regras, auditoria e backup (técnico/admin) |
+| **Avisos** | Novos aparelhos que deram entrada e ativação das notificações do aparelho |
 
 Atalho: **Ctrl + K** (ou Cmd + K) vai direto para a busca de OS.
 
@@ -194,16 +195,56 @@ Menu **Fila**: mostra os aparelhos **Aguardando**, **Em manutenção** e
 
 ### 5.5 Corrigir dados de uma OS (Editar dados)
 
-Na OS aberta, o botão **Editar dados** permite corrigir erros de cadastro:
-nome e WhatsApp do cliente, **loja de entrada**, marca, modelo, cor, IMEI,
-acessórios, defeito relatado, estado do aparelho e o valor do serviço. Cada
-alteração fica registrada no histórico com o valor **antes → depois** e o nome
-de quem alterou. **Ao trocar a loja, o número da OS acompanha a loja de
+Na OS aberta, o botão **Editar dados** corrige **todos os dados da OS**. É a
+tela para consertar o que foi digitado errado no balcão ou ajustar o serviço:
+
+| Bloco | O que dá para mudar |
+| --- | --- |
+| **Cliente** | Nome, WhatsApp e quem entregou o aparelho |
+| **Entrada** | Loja de entrada e o **número da OS** (só para corrigir erro de digitação) |
+| **Aparelho** | Tipo, marca, modelo, cor, IMEI, acessórios, defeito relatado e estado |
+| **Reparo** | **Status** (apenas para onde o fluxo permite ir), **técnico responsável**, prioridade e as datas de início, conclusão e retirada |
+| **Serviço e pagamento** | Valor, forma de pagamento, “pagamento confirmado”, garantia em dias e a data-limite |
+| **Checklist técnico** | As marcações da vistoria, itens deixados, observações e a senha do aparelho |
+
+Cada alteração fica registrada no histórico com o valor **antes → depois** e o
+nome de quem alterou. **Ao trocar de loja, o número da OS acompanha a loja de
 destino** (ex.: `GUA-0001` vira `CUM-0006`) — o número antigo fica no histórico,
 continua achando a OS na busca e o cliente que já tinha o link/QR antigo
 continua rastreando normalmente. Etiquetas já impressas ficam com o número
-antigo; imprima uma nova se precisar. A **data de criação não muda** (nem pela
-edição). Atendentes não veem esse botão.
+antigo; imprima uma nova se precisar.
+
+Duas coisas não mudam nem pela edição: a **data de criação** e **quem lançou a
+entrada** — é o registro de auditoria do balcão. Para trocar o técnico, use o
+campo **Técnico responsável**; para mudar a etapa, use o **Status** (o sistema
+só oferece as etapas válidas a partir da situação atual). Atendentes não veem
+esse botão.
+
+### 5.5.1 Avisos: saber que chegou aparelho sem abrir o sistema
+
+O menu **Avisos** (sino no celular) mostra tudo o que aconteceu enquanto você
+estava fora: quando alguém abre uma OS, chega um aviso com o número, o aparelho,
+o cliente e a loja. Toque no aviso para abrir a OS.
+
+Para o celular apitar **com o sistema fechado**:
+
+1. Abra **Avisos** e toque em **Ativar neste aparelho**; aceite a permissão de
+   notificação do navegador.
+2. Toque em **Enviar teste** e confira se a notificação apareceu na barra do
+   aparelho.
+3. Repita em cada celular/computador que precisa receber os avisos (dono,
+   técnicos). Cada aparelho é independente; **Desativar neste aparelho** desfaz.
+
+Quem abriu a OS não recebe aviso do próprio lançamento. Atendente recebe os
+avisos da própria loja; técnico e administrador recebem de toda a rede.
+
+> **iPhone:** só funciona com o sistema adicionado à **Tela de Início**
+> (iOS 16.4 ou superior): abra no Safari → Compartilhar → Adicionar à Tela de
+> Início, e ative por lá.
+>
+> **Não chega nada?** Confira se o navegador não está com as notificações
+> bloqueadas para o site (cadeado na barra de endereço → Notificações →
+> Permitir) e toque em **Ativar neste aparelho** de novo.
 
 ### 5.6 Painel e relatórios
 

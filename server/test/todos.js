@@ -2,8 +2,9 @@
  * Roda todas as verificações do projeto:
  *
  *   1. estática   — sintaxe, imports e CSS do front-end (rápida);
- *   2. API        — fluxo completo da OS por HTTP (smoke);
- *   3. navegador  — SPA real no Chrome headless (se houver Chrome/Edge).
+ *   2. push       — VAPID + criptografia do Web Push (sem navegador);
+ *   3. API        — fluxo completo da OS por HTTP (smoke);
+ *   4. navegador  — SPA real no Chrome headless (se houver Chrome/Edge).
  *
  *   npm test
  */
@@ -42,6 +43,7 @@ function executar(arquivo) {
 const etapas = [
   { nome: 'Verificação estática do front-end', arquivo: path.join('server', 'test', 'validar-frontend.js') },
   { nome: 'Gerador de PDF (estrutura)', arquivo: path.join('server', 'test', 'pdf.js') },
+  { nome: 'Web Push (VAPID + criptografia)', arquivo: path.join('server', 'test', 'push-crypto.js') },
   { nome: 'Fluxo completo via API', arquivo: path.join('server', 'test', 'smoke.js') },
 ];
 

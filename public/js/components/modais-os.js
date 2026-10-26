@@ -8,7 +8,7 @@ import { criarAssinatura } from '../assinatura.js';
 import { recortarAssinatura, formatarBytes } from '../image.js';
 import { enviarAnexo } from '../anexos.js';
 import { moeda, telefone as formatarTelefone, mascararTelefone } from '../format.js';
-import { ROTULOS_TIPO_FOTO, ehVideoMime } from '../constantes.js';
+import { ROTULOS_TIPO_FOTO, ehVideoMime, CHECKLIST_ITENS, ROTULOS_SENHA, ROTULOS_STATUS } from '../constantes.js';
 import { qrImagem } from '../qr.js';
 
 function campo(rotulo, elemento, { dica = null, opcional = false } = {}) {
@@ -377,18 +377,67 @@ export function modalAnexarFoto({ ordem, aoConcluir }) {
 /* Editar dados da OS                                                         */
 /* -------------------------------------------------------------------------- */
 
+/** "2026-10-26T14:30" (hora local) para o input datetime-local. */
+function dataLocalParaInput(iso) {
+  if (!iso) return '';
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return '';
+  const dois = (numero) => String(numero).padStart(2, '0');
+  return `${data.getFullYear()}-${dois(data.getMonth() + 1)}-${dois(data.getDate())}T${dois(data.getHours())}:${dois(data.getMinutes())}`;
+}
+
+/** "2026-10-26" (data local) para o input date. */
+function dataParaInput(iso) {
+  if (!iso) return '';
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return '';
+  const dois = (numero) => String(numero).padStart(2, '0');
+  return `${data.getFullYear()}-${dois(data.getMonth() + 1)}-${dois(data.getDate())}`;
+}
+
+function checklistDeOrigem(bruto) {
+  if (!bruto) return {};
+  try {
+    const objeto = typeof bruto === 'string' ? JSON.parse(bruto) : bruto;
+    return objeto && typeof objeto === 'object' ? objeto : {};
+  } catch {
+    return {};
+  }
+}
+
+function mesmaEstrutura(a, b) {
+  const normalizar = (valor) =>
+    JSON.stringify(
+      valor && typeof valor === 'object'
+        ? Object.keys(valor)
+            .sort()
+            .reduce((saida, chave) => ({ ...saida, [chave]: valor[chave] }), {})
+        : valor,
+    );
+  return normalizar(a) === normalizar(b);
+}
+
 /**
- * Correção dos dados cadastrais da OS (admin/técnico) — incluindo a loja de
- * entrada. Cada mudança real vira um registro "antes → depois" na linha do
- * tempo; número e data de criação não estão aqui porque continuam imutáveis
- * no banco.
+ * Correção completa dos dados da OS (admin/técnico): cliente, aparelho, loja,
+ * número, status, técnico, prioridade, datas, valores, garantia e checklist.
+ * Cada mudança real vira um registro "antes → depois" na linha do tempo.
+ * Número e data de criação não mudam (são o registro de auditoria da entrada).
+ *
+ * @param {object} opcoes
+ * @param {Array<{valor: string, rotulo: string}>} opcoes.transicoes status para
+ *   os quais a OS pode ir agora (vem da API, com as permissões do usuário).
  */
-export function modalEditarOS({ ordem, aoConcluir }) {
+export function modalEditarOS({ ordem, aoConcluir, transicoes = [] }) {
   const lojas = store.meta?.lojas ?? [];
+  const tecnicos = store.meta?.tecnicos ?? [];
+  const checklistOrigem = checklistDeOrigem(ordem.checklist);
+
+  /* ------------------------------ Entrada ------------------------------- */
+
   const seletorLoja = lojas.length
     ? h(
         'select.selecao',
-        {},
+        { dataset: { campo: 'loja' } },
         ...lojas.map((l) =>
           h(
             'option',
@@ -399,8 +448,26 @@ export function modalEditarOS({ ordem, aoConcluir }) {
       )
     : null;
 
+  const numero = h('input.entrada', {
+    value: ordem.numero_os ?? '',
+    maxLength: 20,
+    style: { textTransform: 'uppercase' },
+    placeholder: 'Ex: GUA-0007',
+    spellcheck: false,
+  });
+
   const clienteNome = h('input.entrada', { value: ordem.cliente_nome ?? '', required: true });
   const clienteTelefone = h('input.entrada', { type: 'tel', inputMode: 'tel', value: ordem.cliente_telefone ?? '', required: true });
+  const recebidoPor = h('input.entrada', { value: ordem.recebido_por ?? '', placeholder: 'Quem entregou o aparelho' });
+
+  /* ------------------------------ Aparelho ------------------------------ */
+
+  const tipo = h('input.entrada', { value: ordem.tipo_aparelho ?? 'Celular', list: 'tipos-aparelho' });
+  const tipos = h(
+    'datalist',
+    { id: 'tipos-aparelho' },
+    ...['Celular', 'Tablet', 'Notebook', 'Smartwatch', 'Console', 'Outro'].map((valor) => h('option', { value: valor })),
+  );
   const marca = h('input.entrada', { value: ordem.marca ?? '', required: true });
   const modelo = h('input.entrada', { value: ordem.modelo ?? '', required: true });
   const cor = h('input.entrada', { value: ordem.cor ?? '', placeholder: 'Opcional' });
@@ -409,19 +476,154 @@ export function modalEditarOS({ ordem, aoConcluir }) {
   const defeitoRelatado = h('textarea.area-texto', { rows: 3, required: true, value: ordem.defeito_relatado ?? '' });
   const estadoAparelho = h('textarea.area-texto', { rows: 2, placeholder: 'Ex: tela trincada, traseira riscada.' });
   estadoAparelho.value = ordem.estado_aparelho ?? '';
+
+  clienteTelefone.addEventListener('input', (evento) => {
+    evento.target.value = mascararTelefone(evento.target.value);
+  });
+
+  /* ------------------------------- Reparo ------------------------------- */
+
+  const status = h(
+    'select.selecao',
+    { dataset: { campo: 'status' } },
+    h('option', { value: ordem.status, selected: true }, `${ROTULOS_STATUS[ordem.status] ?? ordem.status} (atual)`),
+    ...transicoes
+      .filter((transicao) => transicao.valor !== ordem.status)
+      .map((transicao) => h('option', { value: transicao.valor }, `${transicao.rotulo} — mudar agora`)),
+  );
+
+  const tecnico = h(
+    'select.selecao',
+    { dataset: { campo: 'tecnico' } },
+    h('option', { value: '' }, 'Sem responsável'),
+    ...tecnicos.map((t) => h('option', { value: String(t.id), selected: Number(t.id) === Number(ordem.tecnico_id) }, t.nome)),
+  );
+
+  const prioridade = h(
+    'select.selecao',
+    { dataset: { campo: 'prioridade' } },
+    ...[
+      ['baixa', 'Baixa'],
+      ['normal', 'Normal'],
+      ['alta', 'Alta'],
+    ].map(([valor, rotulo]) => h('option', { value: valor, selected: (ordem.prioridade ?? 'normal') === valor }, rotulo)),
+  );
+
+  const inicio = h('input.entrada', { type: 'datetime-local', value: dataLocalParaInput(ordem.iniciado_em) });
+  const conclusao = h('input.entrada', { type: 'datetime-local', value: dataLocalParaInput(ordem.concluido_em) });
+  const retirada = h('input.entrada', { type: 'datetime-local', value: dataLocalParaInput(ordem.retirado_em) });
+
+  /* ------------------------------ Financeiro ----------------------------- */
+
   const valor = h('input.entrada', {
     type: 'text',
     inputMode: 'decimal',
     placeholder: 'Ex: 350,00',
     value: ordem.valor != null ? String(ordem.valor).replace('.', ',') : '',
   });
-
-  clienteTelefone.addEventListener('input', (evento) => {
-    evento.target.value = mascararTelefone(evento.target.value);
+  const pagou = h('input', { type: 'checkbox', checked: Number(ordem.valor_pago) === 1, style: { width: '18px', height: '18px' } });
+  const forma = h(
+    'select.selecao',
+    { dataset: { campo: 'formaPagamento' } },
+    h('option', { value: '' }, 'Não informar'),
+    ...[
+      ['pix', 'Pix'],
+      ['dinheiro', 'Dinheiro'],
+      ['credito', 'Cartão de crédito'],
+      ['debito', 'Cartão de débito'],
+      ['outro', 'Outro'],
+    ].map(([valorForma, rotulo]) => h('option', { value: valorForma, selected: ordem.forma_pagamento === valorForma }, rotulo)),
+  );
+  const garantiaDias = h('input.entrada', {
+    type: 'number',
+    min: '0',
+    max: '3650',
+    inputMode: 'numeric',
+    placeholder: '90',
+    value: ordem.garantia_dias != null ? String(ordem.garantia_dias) : '',
   });
+  const garantiaAte = h('input.entrada', { type: 'date', value: dataParaInput(ordem.garantia_ate) });
+  const garantiaAteInicial = garantiaAte.value;
+
+  /* ------------------------------ Checklist ------------------------------ */
+
+  const marcacoes = Object.fromEntries(
+    CHECKLIST_ITENS.map((item) => [
+      item.chave,
+      h('input', { type: 'checkbox', checked: Boolean(checklistOrigem[item.chave]) }),
+    ]),
+  );
+  const itensDeixados = h('input.entrada', {
+    value: checklistOrigem.itensDeixados ?? '',
+    placeholder: 'Ex: capinha, chip, cartão de memória',
+  });
+  const observacoesChecklist = h('textarea.area-texto', {
+    rows: 2,
+    placeholder: 'Ex: traseira com risco profundo na câmera.',
+  });
+  observacoesChecklist.value = checklistOrigem.observacoes ?? '';
+
+  const tipoSenha = h(
+    'select.selecao',
+    { dataset: { campo: 'tipoSenha' } },
+    ...Object.entries(ROTULOS_SENHA).map(([valorTipo, rotulo]) =>
+      h('option', { value: valorTipo, selected: (checklistOrigem.senha?.tipo ?? 'numerica') === valorTipo }, rotulo),
+    ),
+  );
+  const senhaValor = h('input.entrada', {
+    value: checklistOrigem.senha?.valor ?? '',
+    autocomplete: 'off',
+    spellcheck: false,
+    placeholder: 'Senha informada pelo cliente',
+  });
+
+  const marcouSenha = Boolean(checklistOrigem.senha?.valor);
+  const temSenha = h('input', { type: 'checkbox', checked: marcouSenha, style: { width: '18px', height: '18px' } });
+  const blocoSenha = h(
+    'div.pilha--pequena.pilha',
+    {},
+    h(
+      'div.formulario__linha.formulario__linha--2',
+      {},
+      campo('Tipo de senha', tipoSenha),
+      campo('Senha', senhaValor),
+    ),
+  );
+  const sincronizarSenha = () => blocoSenha.classList.toggle('oculto', !temSenha.checked);
+  temSenha.addEventListener('change', sincronizarSenha);
+  sincronizarSenha();
+
+  function montarChecklist() {
+    const saida = {};
+    for (const item of CHECKLIST_ITENS) if (marcacoes[item.chave].checked) saida[item.chave] = true;
+    const itens = itensDeixados.value.trim();
+    const obs = observacoesChecklist.value.trim();
+    if (itens) saida.itensDeixados = itens;
+    if (obs) saida.observacoes = obs;
+    if (temSenha.checked && senhaValor.value.trim()) {
+      saida.senha = { tipo: tipoSenha.value, valor: senhaValor.value.trim() };
+    }
+    return Object.keys(saida).length ? saida : null;
+  }
+
+  /* ------------------------------- Envio -------------------------------- */
 
   const erro = linhaErro();
   const botao = h('button.btn.btn--primario', { type: 'button', onclick: () => formulario.requestSubmit() }, icone('check', { tamanho: 16 }), 'Salvar alterações');
+
+  const secao = (titulo) => h('div.rotulo-flutuante', { style: { marginTop: '6px' } }, titulo);
+
+  function textoOuNulo(elemento) {
+    const texto = elemento.value.trim();
+    return texto || null;
+  }
+
+  function dataIso(elemento, inicial) {
+    if (elemento.value === inicial) return undefined;
+    if (!elemento.value) return null;
+    const data = new Date(elemento.value);
+    return Number.isNaN(data.getTime()) ? null : data.toISOString();
+  }
 
   const formulario = h(
     'form.pilha',
@@ -441,21 +643,52 @@ export function modalEditarOS({ ordem, aoConcluir }) {
           clienteTelefone.focus();
           return;
         }
+        const numeroDigitado = numero.value.trim().toUpperCase();
+        const numeroMudou = numeroDigitado !== String(ordem.numero_os);
+        if (numeroMudou && !/^[A-Z0-9]{2,6}-\d{3,6}$/.test(numeroDigitado)) {
+          montar(erro, faixaAviso('Número da OS inválido. Use o formato CODIGO-0000 (ex.: GUA-0007).'));
+          erro.classList.remove('oculto');
+          numero.focus();
+          return;
+        }
+
         ocupado(botao, true, 'Salvando…');
         try {
-          const resposta = await api.patch(`/api/ordens/${ordem.id}`, {
+          const corpo = {
             clienteNome: clienteNome.value.trim(),
             clienteTelefone: clienteTelefone.value.trim(),
+            recebidoPor: textoOuNulo(recebidoPor),
+            tipoAparelho: tipo.value.trim() || 'Celular',
             marca: marca.value.trim(),
             modelo: modelo.value.trim(),
-            cor: cor.value.trim(),
-            imei: imei.value.trim(),
-            acessorios: acessorios.value.trim(),
+            cor: textoOuNulo(cor),
+            imei: textoOuNulo(imei),
+            acessorios: textoOuNulo(acessorios),
             defeitoRelatado: defeitoRelatado.value.trim(),
-            estadoAparelho: estadoAparelho.value.trim(),
+            estadoAparelho: textoOuNulo(estadoAparelho),
+            prioridade: prioridade.value,
+            tecnicoId: tecnico.value ? Number(tecnico.value) : null,
             valor: valor.value.trim() ? Number(valor.value.replace(/\./g, '').replace(',', '.')) : null,
+            valorPago: pagou.checked,
+            formaPagamento: forma.value || null,
+            garantiaDias: garantiaDias.value.trim() ? Number(garantiaDias.value) : null,
             lojaId: seletorLoja ? Number(seletorLoja.value) : undefined,
-          });
+          };
+          if (numeroMudou) corpo.numeroOS = numeroDigitado;
+          if (status.value !== ordem.status) corpo.status = status.value;
+          if (garantiaAte.value !== garantiaAteInicial) corpo.garantiaAte = garantiaAte.value || null;
+
+          const inicioIso = dataIso(inicio, dataLocalParaInput(ordem.iniciado_em));
+          if (inicioIso !== undefined) corpo.iniciadoEm = inicioIso;
+          const conclusaoIso = dataIso(conclusao, dataLocalParaInput(ordem.concluido_em));
+          if (conclusaoIso !== undefined) corpo.concluidoEm = conclusaoIso;
+          const retiradaIso = dataIso(retirada, dataLocalParaInput(ordem.retirado_em));
+          if (retiradaIso !== undefined) corpo.retiradoEm = retiradaIso;
+
+          const checklistNovo = montarChecklist();
+          if (!mesmaEstrutura(checklistNovo ?? {}, checklistOrigem)) corpo.checklist = checklistNovo;
+
+          const resposta = await api.patch(`/api/ordens/${ordem.id}`, corpo);
           modal.fechar();
           toastSucesso(resposta.mensagem ?? 'Dados atualizados.', { titulo: 'OS atualizada' });
           aoConcluir?.(resposta);
@@ -469,21 +702,31 @@ export function modalEditarOS({ ordem, aoConcluir }) {
       },
     },
     erro,
-    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. A data de entrada não muda; ao trocar de loja, o número da OS acompanha a loja de destino.'),
+    faixaAviso('Cada alteração fica registrada no histórico com o valor anterior e o novo. A data de entrada e quem lançou a OS não mudam; ao trocar de loja, o número da OS acompanha a loja de destino.'),
+    secao('Cliente'),
     h(
       'div.formulario__linha.formulario__linha--2',
       {},
       campo('Nome do cliente *', clienteNome),
       campo('WhatsApp *', clienteTelefone),
     ),
-    seletorLoja
-      ? campo('Loja de entrada *', seletorLoja, {
-          dica: 'Ao trocar a loja, o número da OS passa para a numeração da loja de destino (ex.: GUA-0001 → CUM-0006) e o número antigo fica no histórico.',
-        })
-      : null,
+    campo('Recebido por', recebidoPor, { opcional: true, dica: 'Quem entregou o aparelho no balcão (pode ser diferente do cliente).' }),
+    secao('Entrada'),
     h(
       'div.formulario__linha.formulario__linha--2',
       {},
+      seletorLoja
+        ? campo('Loja de entrada *', seletorLoja, {
+            dica: 'Ao trocar a loja, o número da OS passa para a numeração da loja de destino (ex.: GUA-0001 → CUM-0006) e o número antigo fica no histórico.',
+          })
+        : h('div'),
+      campo('Número da OS', numero, { dica: 'Só altere para corrigir um erro de digitação. O número antigo continua valendo no rastreio do cliente.' }),
+    ),
+    secao('Aparelho'),
+    h(
+      'div.formulario__linha.formulario__linha--3',
+      {},
+      campo('Tipo', tipo),
       campo('Marca *', marca),
       campo('Modelo *', modelo),
     ),
@@ -496,13 +739,58 @@ export function modalEditarOS({ ordem, aoConcluir }) {
     ),
     campo('Defeito relatado *', defeitoRelatado, { dica: 'Corrija aqui se a descrição foi digitada errada na entrada.' }),
     campo('Estado do aparelho', estadoAparelho, { opcional: true }),
-    campo('Valor do serviço (R$)', valor, { opcional: true, dica: 'Muda o valor registrado na OS — a alteração entra no histórico.' }),
+    secao('Reparo'),
+    h(
+      'div.formulario__linha.formulario__linha--3',
+      {},
+      campo('Status', status, { dica: 'A edição anda dentro do fluxo normal — não pula etapa.' }),
+      campo('Técnico responsável', tecnico),
+      campo('Prioridade', prioridade),
+    ),
+    h(
+      'div.formulario__linha.formulario__linha--3',
+      {},
+      campo('Início do reparo', inicio, { opcional: true }),
+      campo('Conclusão', conclusao, { opcional: true }),
+      campo('Retirada', retirada, { opcional: true }),
+    ),
+    secao('Serviço e pagamento'),
+    h(
+      'div.formulario__linha.formulario__linha--2',
+      {},
+      campo('Valor do serviço (R$)', valor, { opcional: true }),
+      campo('Forma de pagamento', forma, { opcional: true }),
+    ),
+    h(
+      'label.linha',
+      { style: { gap: '10px', cursor: 'pointer', alignItems: 'center' } },
+      pagou,
+      h('span', { style: { flex: '1' } }, h('span.texto-forte', {}, 'Pagamento confirmado'), h('div.texto-mini.texto-fraco', {}, 'Marque quando o cliente já pagou o serviço.')),
+    ),
+    h(
+      'div.formulario__linha.formulario__linha--2',
+      {},
+      campo('Garantia (dias)', garantiaDias, { opcional: true, dica: 'Alterar os dias recalcula a data-limite a partir da retirada.' }),
+      campo('Garantia até', garantiaAte, { opcional: true }),
+    ),
+    secao('Checklist técnico'),
+    h('div.checklist', {}, ...CHECKLIST_ITENS.map((item) => h('label.checklist__item', {}, marcacoes[item.chave], h('span', {}, item.rotulo)))),
+    campo('Itens deixados com o aparelho', itensDeixados, { opcional: true }),
+    campo('Observações da vistoria', observacoesChecklist, { opcional: true }),
+    h(
+      'label.linha',
+      { style: { gap: '10px', cursor: 'pointer', alignItems: 'center' } },
+      temSenha,
+      h('span', { style: { flex: '1' } }, h('span.texto-forte', {}, 'Cliente informou a senha do aparelho'), h('div.texto-mini.texto-fraco', {}, 'A senha fica na OS, mas nunca é copiada para o histórico.'))),
+    blocoSenha,
+    tipos,
   );
 
   const modal = abrirModal({
     titulo: 'Editar dados da OS',
     descricao: `OS ${ordem.numero_os} · ${ordem.loja_nome ?? ''}`,
     corpo: formulario,
+    largura: '760px',
     rodape: [
       h('button.btn.btn--secundario', { type: 'button', onclick: () => modal.fechar() }, 'Cancelar'),
       botao,

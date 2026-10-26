@@ -35,6 +35,7 @@ import {
   ROTULOS_ORCAMENTO,
 } from '../services/orcamentos.js';
 import { lerNumeroConfig, CHAVES } from '../services/configuracoes.js';
+import { avisarNovaOS } from '../services/notificacoes.js';
 import { modoArmazenamento, tokenUploadCliente, metadadosRemotos } from '../storage.js';
 import { config } from '../config.js';
 import {
@@ -174,13 +175,31 @@ function normalizarPayloadOS(corpo) {
 }
 
 /**
+ * Data/hora vinda do formulário (`datetime-local`) ou de uma API.
+ * Aceita ISO completo ou "AAAA-MM-DD" (nesse caso fixa meio-dia local, para que
+ * a data exibida não caia no dia anterior por causa do fuso).
+ */
+function exigirDataHora(valor, campo) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const texto = String(valor).trim();
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(texto) ? new Date(`${texto}T12:00:00`) : new Date(texto);
+  if (Number.isNaN(data.getTime())) throw invalido(`Data inválida em "${campo}".`, { campo });
+  return data.toISOString();
+}
+
+const RE_NUMERO_OS = /^[A-Z0-9]{2,6}-\d{3,6}$/;
+
+/**
  * Valida somente os campos presentes no corpo — a edição pode corrigir um
- * único dado sem exigir o formulário completo.
+ * único dado sem exigir o formulário completo. A lista cobre todos os dados da
+ * OS; o que é registro de auditoria (quem lançou a entrada e quando) continua
+ * fora de propósito.
  */
 function normalizarEdicaoOS(corpo) {
   const leitores = {
     clienteNome: () => exigirTexto(corpo.clienteNome, 'nome do cliente', { min: 2, max: 120 }),
     clienteTelefone: () => exigirTelefone(corpo.clienteTelefone, 'telefone do cliente'),
+    tipoAparelho: () => exigirTexto(corpo.tipoAparelho, 'tipo do aparelho', { max: 40 }),
     marca: () => exigirTexto(corpo.marca, 'marca', { max: 60 }),
     modelo: () => exigirTexto(corpo.modelo, 'modelo', { max: 80 }),
     cor: () => exigirTexto(corpo.cor, 'cor', { max: 40, opcional: true }),
@@ -188,8 +207,27 @@ function normalizarEdicaoOS(corpo) {
     acessorios: () => exigirTexto(corpo.acessorios, 'acessórios deixados', { max: 300, opcional: true }),
     defeitoRelatado: () => exigirTexto(corpo.defeitoRelatado, 'defeito relatado', { min: 3, max: 2000 }),
     estadoAparelho: () => exigirTexto(corpo.estadoAparelho, 'estado do aparelho', { max: 1000, opcional: true }),
+    recebidoPor: () => exigirTexto(corpo.recebidoPor, 'recebido por', { max: 120, opcional: true }),
     valor: () => exigirNumero(corpo.valor, 'valor', { min: 0, max: 999999 }),
+    valorPago: () => (corpo.valorPago ? 1 : 0),
+    prioridade: () => exigirEnum(corpo.prioridade, 'prioridade', ['baixa', 'normal', 'alta']),
+    formaPagamento: () => exigirEnum(corpo.formaPagamento, 'forma de pagamento', FORMAS_PAGAMENTO, { opcional: true }),
+    garantiaDias: () => exigirNumero(corpo.garantiaDias, 'garantia (dias)', { min: 0, max: 3650 }),
+    garantiaAte: () => exigirDataHora(corpo.garantiaAte, 'garantia até'),
+    iniciadoEm: () => exigirDataHora(corpo.iniciadoEm, 'início do reparo'),
+    concluidoEm: () => exigirDataHora(corpo.concluidoEm, 'conclusão'),
+    retiradoEm: () => exigirDataHora(corpo.retiradoEm, 'retirada'),
     lojaId: () => exigirNumero(corpo.lojaId, 'loja de entrada', { min: 1, max: 999999, opcional: false }),
+    tecnicoId: () => (corpo.tecnicoId === null || corpo.tecnicoId === '' ? null : exigirNumero(corpo.tecnicoId, 'técnico responsável', { min: 1, max: 999999 })),
+    status: () => exigirEnum(corpo.status, 'status', STATUS_VALIDOS),
+    numeroOS: () => {
+      const numero = String(corpo.numeroOS ?? '').trim().toUpperCase();
+      if (!RE_NUMERO_OS.test(numero)) {
+        throw invalido('Número da OS inválido. Use o formato CODIGO-0000 (ex.: GUA-0007).', { campo: 'numeroOS' });
+      }
+      return numero;
+    },
+    checklist: () => normalizarChecklist(corpo.checklist),
   };
   const dados = {};
   for (const [campo, ler] of Object.entries(leitores)) {
@@ -275,13 +313,17 @@ export function registrar(rota) {
 
     const osId = await criarOS(ctx.usuario, { ...dados, lojaNome: loja.nome }, lojaId);
     const os = await buscarOS(osId, ctx.usuario);
+    // Avisa a equipe (sino + push). Roda depois da OS existir e nunca impede a
+    // entrada do aparelho — falha de notificação é registrada e engolida.
+    await avisarNovaOS({ os, autor: ctx.usuario });
     ctx.status = 201;
     return { ordem: os, mensagem: `OS ${os.numero_os} criada com sucesso.` };
   });
 
   /* --------------------------------- Edição ------------------------------ */
-  // Correção de dados cadastrais por admin/técnico, com registro no histórico.
-  // Loja, número e data de criação continuam imutáveis (trigger no banco).
+  // Correção de todos os dados operacionais da OS por admin/técnico, com
+  // registro no histórico. Data de criação e autor da entrada são o registro
+  // de auditoria e não mudam (trigger no banco).
   rota.patch('/api/ordens/:id', async (ctx) => {
     exigirAutenticacao(ctx.usuario);
     exigirPermissao(ctx.usuario, 'os.editar');

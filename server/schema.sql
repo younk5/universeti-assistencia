@@ -151,6 +151,42 @@ CREATE TABLE IF NOT EXISTS exclusoes_log (
 CREATE INDEX IF NOT EXISTS idx_exclusoes_criado ON exclusoes_log(criado_em DESC);
 
 -- ============================================================================
+-- Avisos (notificações) — alimentam o sino do sistema e o push do navegador
+-- Uma linha por destinatário: cada pessoa marca o seu aviso como lido.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS notificacoes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  os_id      INTEGER REFERENCES ordens_servico(id) ON DELETE CASCADE,
+  tipo       TEXT    NOT NULL,
+  titulo     TEXT    NOT NULL,
+  mensagem   TEXT,
+  -- Rota interna que abre o registro relacionado (ex.: /ordens/42).
+  url        TEXT,
+  criado_em  TEXT    NOT NULL,
+  lido_em    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id, id DESC);
+
+-- Inscrições de Web Push (uma por navegador/aparelho). O endpoint identifica o
+-- aparelho no serviço de push; p256dh e auth são as chaves do próprio navegador.
+CREATE TABLE IF NOT EXISTS push_inscricoes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id      INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  endpoint        TEXT    NOT NULL UNIQUE,
+  p256dh          TEXT    NOT NULL,
+  auth            TEXT    NOT NULL,
+  user_agent      TEXT,
+  criado_em       TEXT    NOT NULL,
+  ultimo_envio_em TEXT,
+  falhas          INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_inscricoes(usuario_id);
+
+
+-- ============================================================================
 -- Trilha de auditoria imutável
 -- Eventos e fotos são o registro legal do que aconteceu com o aparelho.
 -- Uma vez gravados, não podem ser alterados nem apagados: apenas acrescentados.

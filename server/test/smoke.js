@@ -342,8 +342,71 @@ try {
   r = await api('PATCH', `/api/ordens/${osId}`, { valor: 512.9 });
   ok(r.status === 200 && Number(r.dados.ordem?.valor) === 512.9, 'valor do serviço pode ser ajustado na edição');
 
-  r = await api('PATCH', `/api/ordens/${osId}`, { status: 'cancelado' });
-  ok(r.status === 422, 'edição não altera status (422)', `status=${r.status}`);
+  // Edição completa: o admin/técnico corrige qualquer dado operacional da OS.
+  const tecnicoB = Number((await consultarUm("SELECT id FROM usuarios WHERE email = 'tecnico.b@teste.com'")).id);
+  r = await api('PATCH', `/api/ordens/${osId}`, {
+    tipoAparelho: 'Celular',
+    prioridade: 'alta',
+    tecnicoId: tecnicoB,
+    garantiaDias: 120,
+    formaPagamento: 'pix',
+    valorPago: true,
+    iniciadoEm: '2026-01-02T10:00:00.000Z',
+    checklist: {
+      liga: true,
+      oxidacao: true,
+      itensDeixados: 'capinha',
+      senha: { tipo: 'numerica', valor: '1234' },
+    },
+  });
+  ok(r.status === 200, 'edição aceita os campos operacionais da OS (200)', JSON.stringify(r.dados).slice(0, 200));
+  ok(r.dados.ordem?.prioridade === 'alta', 'prioridade fica editável');
+  ok(Number(r.dados.ordem?.tecnico_id) === tecnicoB, 'técnico responsável fica editável');
+  ok(Number(r.dados.ordem?.garantia_dias) === 120, 'garantia em dias fica editável');
+  ok(
+    r.dados.ordem?.forma_pagamento === 'pix' && Number(r.dados.ordem?.valor_pago) === 1,
+    'forma de pagamento e pagamento confirmado ficam editáveis',
+  );
+  ok(r.dados.ordem?.iniciado_em === '2026-01-02T10:00:00.000Z', 'data de início do reparo fica editável');
+  ok(String(r.dados.ordem?.checklist ?? '').includes('1234'), 'checklist técnico fica editável');
+
+  // A senha do aparelho nunca é copiada para a trilha de auditoria.
+  const eventoChecklist = (await api('GET', `/api/ordens/${osId}`)).dados.eventos
+    .filter((e) => /Checklist/.test(e.descricao ?? ''))
+    .pop();
+  ok(
+    eventoChecklist && !String(eventoChecklist.descricao).includes('1234'),
+    'histórico registra o checklist sem expor a senha do aparelho',
+    String(eventoChecklist?.descricao).slice(0, 140),
+  );
+
+  // Número da OS: correção manual, com validação de formato e duplicidade.
+  r = await api('PATCH', `/api/ordens/${osId}`, { numeroOS: 'TST-0900' });
+  ok(
+    r.status === 200 && r.dados.ordem?.numero_os === 'TST-0900',
+    'número da OS pode ser corrigido manualmente',
+    JSON.stringify(r.dados).slice(0, 160),
+  );
+  ok((await api('GET', '/api/ordens/por-numero/TST-0900')).status === 200, 'busca pelo número corrigido funciona');
+  r = await api('PATCH', `/api/ordens/${osId}`, { numeroOS: 'TST-0900' });
+  ok(r.status === 200 && r.dados.alteracoes.length === 0, 'reenviar o mesmo número não gera alteração');
+  r = await api('PATCH', `/api/ordens/${osId}`, { numeroOS: 'numero-invalido' });
+  ok(r.status === 422, 'número fora do formato é recusado (422)', `status=${r.status}`);
+  r = await api('PATCH', `/api/ordens/${osId}`, { numeroOS });
+  ok(r.status === 200 && r.dados.ordem?.numero_os === numeroOS, 'número original restaurado para os testes seguintes');
+
+  // Status entra na edição respeitando a mesma máquina de estados do fluxo.
+  r = await api('PATCH', `/api/ordens/${osId}`, { status: 'aguardando' });
+  ok(r.status === 409, 'edição não pula etapa do fluxo (409)', `status=${r.status}`);
+  r = await api('PATCH', `/api/ordens/${osId}`, { status: 'em_manutencao' });
+  ok(r.status === 200 && r.dados.ordem?.status === 'em_manutencao', 'admin corrige o status dentro do fluxo permitido');
+  ok(
+    (r.dados.alteracoes ?? []).some((a) => String(a).startsWith('Status:')),
+    'mudança de status entra na lista de alterações',
+    JSON.stringify(r.dados.alteracoes).slice(0, 200),
+  );
+  r = await api('PATCH', `/api/ordens/${osId}`, { status: 'pronto' });
+  ok(r.status === 200 && r.dados.ordem?.status === 'pronto', 'status volta ao valor esperado pelos testes seguintes');
 
   r = await api('PATCH', `/api/ordens/${osId}`, {});
   ok(r.status === 422, 'edição sem campos é recusada (422)', `status=${r.status}`);
@@ -394,7 +457,12 @@ try {
 
   // Restaura telefone, valor e a loja original usados pelos testes seguintes
   // (rastreio pelo final do telefone e busca por dígitos) — também auditado.
-  r = await api('PATCH', `/api/ordens/${osId}`, { clienteTelefone: '(11) 91234-5678', valor: 480.5, lojaId: lojaOriginal });
+  r = await api('PATCH', `/api/ordens/${osId}`, {
+    clienteTelefone: '(11) 91234-5678',
+    valor: 480.5,
+    lojaId: lojaOriginal,
+    numeroOS,
+  });
   ok(
     r.status === 200 &&
       r.dados.ordem?.cliente_telefone === '(11) 91234-5678' &&
@@ -773,6 +841,110 @@ try {
   await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
   r = await api('GET', '/api/ordens');
   ok(r.dados.total === totalOrdensBackup, 'dados permanecem íntegros após restaurar', `${r.dados.total} vs ${totalOrdensBackup}`);
+
+  titulo('Avisos de nova OS (sino e push)');
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
+  const avisosAntes = await api('GET', '/api/notificacoes');
+  ok(avisosAntes.status === 200, 'central de avisos responde para o admin');
+  ok(Array.isArray(avisosAntes.dados.itens), 'lista de avisos é um array');
+
+  // Atendente novo na loja TST: o atendente original foi excluído no teste de
+  // exclusão de usuário (e o backup restaurado reflete esse estado).
+  const lojaDoAviso = Number((await consultarUm("SELECT id FROM lojas WHERE codigo = 'TST'")).id);
+  r = await api('POST', '/api/usuarios', {
+    nome: 'Atendente Aviso',
+    email: 'aviso.atendente@teste.com',
+    senha: 'Teste@123',
+    papel: 'atendente',
+    lojaId: lojaDoAviso,
+  });
+  ok(r.status === 201, 'atendente de teste criado para lançar a OS', `status=${r.status}`);
+
+  const loginAtendente = await api('POST', '/api/auth/login', { email: 'aviso.atendente@teste.com', senha: 'Teste@123' });
+  ok(loginAtendente.status === 200, 'atendente entra para lançar a OS', `${loginAtendente.status} ${JSON.stringify(loginAtendente.dados).slice(0, 120)}`);
+  r = await api('POST', '/api/ordens', {
+    clienteNome: 'Cliente Aviso Teste',
+    clienteTelefone: '(11) 95555-4444',
+    marca: 'Samsung',
+    modelo: 'Galaxy A15',
+    defeitoRelatado: 'Tela apagada, mas vibra ao ligar.',
+  });
+  const numeroAviso = r.dados.ordem?.numero_os;
+  const idAviso = r.dados.ordem?.id;
+  ok(r.status === 201 && Boolean(numeroAviso), 'OS criada para gerar o aviso', `${r.status} ${JSON.stringify(r.dados).slice(0, 160)}`);
+
+  r = await api('GET', '/api/notificacoes');
+  ok(
+    !r.dados.itens.some((item) => item.os_id === idAviso && item.tipo === 'os_criada'),
+    'quem registra a entrada não recebe aviso do próprio lançamento',
+  );
+
+  await api('POST', '/api/auth/login', { email: 'atendente.b@teste.com', senha: 'Teste@123' });
+  r = await api('GET', '/api/notificacoes');
+  ok(
+    !r.dados.itens.some((item) => item.os_id === idAviso),
+    'aviso de outra loja não aparece para o atendente',
+  );
+
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
+  r = await api('GET', '/api/notificacoes');
+  const avisoNovaOS = r.dados.itens.find((item) => item.os_id === idAviso && item.tipo === 'os_criada');
+  ok(Boolean(avisoNovaOS), 'aviso chega para o admin com a OS de origem', JSON.stringify(r.dados.itens[0] ?? {}).slice(0, 160));
+  ok(String(avisoNovaOS?.titulo ?? '').includes(String(numeroAviso)), 'título do aviso traz o número da OS', String(avisoNovaOS?.titulo));
+  ok(
+    String(avisoNovaOS?.mensagem ?? '').includes('Galaxy A15') && String(avisoNovaOS?.mensagem ?? '').includes('Loja Teste Centro'),
+    'aviso descreve aparelho e loja de entrada',
+    String(avisoNovaOS?.mensagem),
+  );
+  ok(Number(r.dados.naoLidos) >= 1, 'contador de não lidos mostra o aviso novo', String(r.dados.naoLidos));
+
+  r = await api('POST', '/api/notificacoes/lidas', { ids: [avisoNovaOS.id] });
+  ok(r.status === 200 && Number(r.dados.naoLidos) === 0, 'aviso marcado como lido sai do contador');
+
+  r = await api('POST', '/api/notificacoes/lidas', {});
+  ok(r.status === 200 && Number(r.dados.naoLidos) === 0, 'marcar todos zera o contador');
+
+  // Chave VAPID: gerada uma vez por instalação e estável entre chamadas.
+  const chave1 = (await api('GET', '/api/notificacoes/push')).dados.chavePublica;
+  const chave2 = (await api('GET', '/api/notificacoes/push')).dados.chavePublica;
+  ok(/^[A-Za-z0-9_-]{80,90}$/.test(String(chave1)), 'chave pública de push tem formato VAPID', String(chave1).slice(0, 20));
+  ok(chave1 === chave2, 'chave VAPID é estável entre chamadas');
+
+  r = await api('POST', '/api/notificacoes/push/teste', {});
+  ok(r.status === 422, 'teste de push sem aparelho inscrito é recusado (422)', `status=${r.status}`);
+
+  r = await api('POST', '/api/notificacoes/push', { endpoint: 'http://inseguro.exemplo.com/x', keys: { p256dh: 'a', auth: 'b' } });
+  ok(r.status === 422, 'inscrição de push fora do formato é recusada (422)', `status=${r.status}`);
+
+  const endpointFalso = 'https://push.exemplo.com/teste-smoke-1';
+  r = await api('POST', '/api/notificacoes/push', {
+    endpoint: endpointFalso,
+    keys: {
+      p256dh: Buffer.alloc(65, 7).toString('base64url'),
+      auth: Buffer.alloc(16, 9).toString('base64url'),
+    },
+  });
+  ok(r.status === 201 && Number(r.dados.inscricoes) === 1, 'aparelho pode ser inscrito no push', JSON.stringify(r.dados).slice(0, 140));
+  ok(
+    Number((await api('GET', '/api/notificacoes/push')).dados.inscricoes) === 1,
+    'inscrição aparece na lista de aparelhos do usuário',
+  );
+
+  await api('POST', '/api/auth/login', { email: 'atendente.b@teste.com', senha: 'Teste@123' });
+  r = await api('DELETE', `/api/notificacoes/push?endpoint=${encodeURIComponent(endpointFalso)}`);
+  ok(r.status === 200 && Number(r.dados.inscricoes) === 0, 'outro usuário não remove a inscrição alheia');
+
+  await api('POST', '/api/auth/login', { email: 'admin@teste.com', senha: 'Nova@123' });
+  ok(
+    Number((await api('GET', '/api/notificacoes/push')).dados.inscricoes) === 1,
+    'inscrição do admin continua gravada depois da tentativa de outro usuário',
+  );
+
+  r = await api('DELETE', `/api/notificacoes/push?endpoint=${encodeURIComponent(endpointFalso)}`);
+  ok(r.status === 200 && Number(r.dados.inscricoes) === 0, 'o próprio usuário remove a inscrição (desativar no aparelho)');
+
+  r = await api('GET', '/api/notificacoes', null, { cookie: false });
+  ok(r.status === 401, 'central de avisos exige sessão (401)', `status=${r.status}`);
 
   titulo('Logout');
   r = await api('POST', '/api/auth/logout');
