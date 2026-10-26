@@ -26,6 +26,9 @@ jobs:
       - name: Teste de PDF
         run: npm run test:pdf
 
+      - name: Web Push (VAPID + criptografia)
+        run: npm run test:push
+
       - name: Testes de API
         run: npm run test:api
 
