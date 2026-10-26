@@ -165,6 +165,10 @@ export async function excluirUsuario(id, usuario = null) {
   });
 
   await semChavesEstrangeiras(async () => {
+    // Avisos e inscrições de push somem junto com a conta (no Turso as chaves
+    // estrangeiras não são aplicadas, então a limpeza é explícita).
+    await executar('DELETE FROM notificacoes WHERE usuario_id = ?', id);
+    await executar('DELETE FROM push_inscricoes WHERE usuario_id = ?', id);
     await executar('DELETE FROM sessoes WHERE usuario_id = ?', id);
     await executar('DELETE FROM usuarios WHERE id = ?', id);
   });

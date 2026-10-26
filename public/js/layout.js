@@ -2,6 +2,7 @@ import { h, montar } from './dom.js';
 import { icone } from './icons.js';
 import { store } from './store.js';
 import { iniciais, iniciaisPapel } from './format.js';
+import { montarBotaoAvisos, montarItemAvisos, iniciarAvisos, atualizarBadgeAvisos } from './avisos.js';
 
 const ITENS = [
   { id: 'painel', rota: '/painel', rotulo: 'Painel', icone: 'painel', permissao: null },
@@ -93,6 +94,8 @@ export function montarLayout(rota) {
             : null,
         );
       }),
+      // Avisos não é uma rota: abre a central em modal, com o contador de não lidos.
+      montarItemAvisos(),
     ),
     h(
       'div.sidebar__rodape',
@@ -132,6 +135,7 @@ export function montarLayout(rota) {
     h(
       'div.topbar__acoes',
       {},
+      montarBotaoAvisos(),
       h(
         'button.btn.btn--icone',
         {
@@ -183,6 +187,10 @@ export function montarLayout(rota) {
   containerConteudo = h('main.conteudo', { id: 'conteudo' });
 
   montar(raiz, h('div', { style: { display: 'contents' } }, sidebar), topbar, containerConteudo, bottomnav);
+
+  // Sino: contador e push deste aparelho. Roda uma vez por sessão.
+  iniciarAvisos();
+  atualizarBadgeAvisos();
 
   if (usuario?.papel === 'atendente' && !usuario?.lojaId) {
     containerConteudo.append(

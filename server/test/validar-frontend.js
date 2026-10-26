@@ -31,6 +31,10 @@ function listarJs(diretorio) {
 }
 
 const arquivosJs = listarJs(path.join(publico, 'js'));
+// Também valida os scripts soltos na raiz de public/ (ex.: service worker).
+for (const entrada of fs.readdirSync(publico, { withFileTypes: true })) {
+  if (entrada.isFile() && entrada.name.endsWith('.js')) arquivosJs.push(path.join(publico, entrada.name));
+}
 
 for (const arquivo of arquivosJs) {
   arquivos += 1;
