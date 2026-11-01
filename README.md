@@ -1,5 +1,21 @@
 # UniverseTI Assistência — Ordens de Serviço
 
+Sistema web que controla a assistência técnica de celulares e eletrônicos em uma
+rede de 3 lojas: entrada do aparelho com foto, fila de bancada, conclusão com
+evidência e retirada com assinatura — tudo com histórico **auditável e imutável**
+no próprio banco de dados.
+
+Foi construído para resolver um problema real de balcão: ordem de serviço em papel
+se perde, cliente liga perguntando do aparelho e ninguém sabe responder.
+
+**[▶ Abrir o sistema](https://assistenciauniverse.vercel.app)**
+
+![Painel do sistema](docs/print-painel.png)
+
+`Node.js` · `SQLite` · `JavaScript` · `zero dependências externas` · `sem etapa de build`
+
+---
+
 Sistema web responsivo (celular e desktop) para controlar o fluxo de assistência
 técnica de celulares e outros eletrônicos em uma rede de lojas: entrada com foto,
 fila de bancada, conclusão com evidência e retirada com assinatura — tudo com
