@@ -10,8 +10,6 @@ se perde, cliente liga perguntando do aparelho e ninguém sabe responder.
 
 **[▶ Abrir o sistema](https://assistenciauniverse.vercel.app)**
 
-![Painel do sistema](docs/print-painel.png)
-
 `Node.js` · `SQLite` · `JavaScript` · `zero dependências externas` · `sem etapa de build`
 
 ---
