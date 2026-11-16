@@ -129,6 +129,80 @@ export async function baixarRelatorioPainel(dados, { escopo = 'Rede inteira' } =
     }
   }
 
+  /* ------------------ Gastos com peças por fornecedor ------------------- */
+  const pecas = dados.pecas;
+  if (pecas && (pecas.fornecedores?.length || Number(pecas.totalGeral) > 0)) {
+    secao('Gastos com peças por fornecedor');
+
+    const cortar = (texto, largura, tamanho = 2.4, peso = 400) => {
+      let atual = String(texto ?? '');
+      if (doc.larguraTexto(atual, { tamanho, peso }) <= largura) return atual;
+      while (atual.length > 1 && doc.larguraTexto(`${atual}…`, { tamanho, peso }) > largura) {
+        atual = atual.slice(0, -1);
+      }
+      return `${atual}…`;
+    };
+
+    const colunas = { peca: M + 6, modelo: M + 66, loja: M + 118 };
+    const desenharCabecalho = () => {
+      garantir(9);
+      doc.texto(colunas.peca, y, 'Peça', { tamanho: 2.3, peso: 700, cor: '#6b7186' });
+      doc.texto(colunas.modelo, y, 'Modelo', { tamanho: 2.3, peso: 700, cor: '#6b7186' });
+      doc.texto(colunas.loja, y, 'Loja de destino', { tamanho: 2.3, peso: 700, cor: '#6b7186' });
+      doc.texto(P.largura - M, y, 'Preço', { tamanho: 2.3, peso: 700, cor: '#6b7186', alinhamento: 'right' });
+      y += 3.4;
+      doc.linha(M, y, P.largura - M, y, { cor: '#e5e8f0', espessura: 0.15 });
+      y += 3;
+    };
+
+    desenharCabecalho();
+
+    for (const grupo of pecas.fornecedores) {
+      garantir(16);
+      doc.texto(M, y, cortar(grupo.fornecedor, P.largura - M * 2 - 34, 2.9, 700), { tamanho: 2.9, peso: 700 });
+      y += 4.6;
+
+      for (const item of grupo.itens) {
+        garantir(5.4);
+        doc.texto(colunas.peca, y, cortar(item.peca, 56, 2.4), { tamanho: 2.4 });
+        doc.texto(colunas.modelo, y, cortar(item.modelo || item.aparelho || '—', 48, 2.3), {
+          tamanho: 2.3,
+          cor: '#5a6178',
+        });
+        doc.texto(colunas.loja, y, cortar(item.loja, 60, 2.3), { tamanho: 2.3, cor: '#5a6178' });
+        doc.texto(P.largura - M, y, moeda(item.preco), { tamanho: 2.4, alinhamento: 'right' });
+        y += 4.6;
+      }
+
+      garantir(6);
+      doc.linha(M, y, P.largura - M, y, { cor: '#e5e8f0', espessura: 0.15 });
+      y += 3.4;
+      doc.texto(M + 6, y, `Subtotal ${grupo.fornecedor}`, { tamanho: 2.5, peso: 700, cor: '#5a6178' });
+      doc.texto(P.largura - M, y, moeda(grupo.subtotal), {
+        tamanho: 2.6,
+        peso: 700,
+        alinhamento: 'right',
+        cor: '#4f46e5',
+      });
+      y += 6;
+    }
+
+    y += 1;
+    secao('Resumo dos gastos');
+    for (const grupo of pecas.fornecedores) {
+      linha(`Total · ${grupo.fornecedor}`, `${numero(grupo.totalItens)} un. · ${moeda(grupo.subtotal)}`);
+    }
+    if (pecas.fornecedores.length > 1) {
+      y += 1.4;
+      doc.linha(M, y, P.largura - M, y, { cor: '#e5e8f0', espessura: 0.2 });
+      y += 3.6;
+    }
+    for (const loja of pecas.porLoja ?? []) {
+      linha(`Loja ${loja.loja}`, moeda(loja.total));
+    }
+    linha('Total geral gasto com peças', moeda(pecas.totalGeral), true);
+  }
+
   const emitido = new Date().toLocaleString('pt-BR');
   paginas.forEach((pagina, indice) => {
     pagina.linha(M, P.altura - 13, P.largura - M, P.altura - 13, { cor: '#e5e8f0', espessura: 0.2 });

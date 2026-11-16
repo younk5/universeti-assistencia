@@ -47,6 +47,172 @@ export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
   const garantia = h('input.entrada', { type: 'number', min: '0', max: '3650', placeholder: '90', inputMode: 'numeric', value: String(ordem.garantia_dias ?? garantiaPadrao ?? 90) });
   const observacoes = h('textarea.area-texto', { rows: 2, placeholder: 'Observações para o histórico (ex: cliente autorizou o valor por WhatsApp).' });
 
+  /* ---------------------- Peças do inventário (opcional) ------------------ */
+
+  const itensInventario = [];
+  let usaInventario = false;
+  let pecasCarregadas = null;
+
+  const seletorPeca = h('select.selecao', {});
+  const quantidadePeca = h('input.entrada', {
+    type: 'number',
+    min: '1',
+    step: '1',
+    value: '1',
+    inputMode: 'numeric',
+    style: { maxWidth: '110px' },
+  });
+  const listaInventario = h('div.pilha--pequena');
+  const totalInventario = h('strong', {}, moeda(0));
+  const avisoInventario = h('div.texto-mini.texto-fraco', {}, 'Carregando peças do inventário…');
+
+  const chipSim = h('button.chip', { type: 'button', 'aria-pressed': 'false', onclick: () => definirUsoDeInventario(true) }, 'Sim');
+  const chipNao = h('button.chip', { type: 'button', 'aria-pressed': 'true', onclick: () => definirUsoDeInventario(false) }, 'Não');
+
+  const blocoInventario = h(
+    'div.pilha--pequena.pilha.oculto',
+    {},
+    avisoInventario,
+    campo(
+      'Peça do inventário',
+      seletorPeca,
+      { dica: 'O fornecedor, o modelo e o preço de custo vêm do cadastro da peça.' },
+    ),
+    h(
+      'div.linha',
+      { style: { gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' } },
+      campo('Quantidade', quantidadePeca),
+      h(
+        'button.btn.btn--secundario',
+        { type: 'button', onclick: adicionarPecaDoInventario },
+        icone('pacote', { tamanho: 16 }),
+        'Adicionar peça',
+      ),
+    ),
+    listaInventario,
+    h('div.linha.linha--entre', {}, h('span.texto-suave', {}, 'Custo das peças'), totalInventario),
+    h('p.texto-mini.texto-fraco', {}, 'O preço fica congelado na OS: mudanças futuras no cadastro não alteram este serviço nem os relatórios.'),
+  );
+
+  function definirUsoDeInventario(valor) {
+    usaInventario = valor;
+    chipSim.setAttribute('aria-pressed', valor ? 'true' : 'false');
+    chipNao.setAttribute('aria-pressed', valor ? 'false' : 'true');
+    blocoInventario.classList.toggle('oculto', !valor);
+    if (valor && pecasCarregadas === null) carregarPecasDoInventario();
+  }
+
+  async function carregarPecasDoInventario() {
+    try {
+      const resposta = await api.get('/api/inventario/pecas', { disponiveis: '1' });
+      pecasCarregadas = resposta.pecas ?? [];
+      if (!pecasCarregadas.length) {
+        avisoInventario.textContent = 'Nenhuma peça disponível no inventário. Cadastre as peças na aba Inventário.';
+        seletorPeca.disabled = true;
+        return;
+      }
+      avisoInventario.textContent = `${pecasCarregadas.length} peça(s) disponíveis no inventário.`;
+      montar(
+        seletorPeca,
+        ...pecasCarregadas.map((peca) =>
+          h(
+            'option',
+            { value: String(peca.id) },
+            `${peca.nome}${peca.modelo ? ` · ${peca.modelo}` : ''} — ${peca.fornecedor_nome} — ${moeda(peca.preco_custo)}${
+              peca.controla_estoque ? ` (${peca.quantidade_estoque} em estoque)` : ''
+            }`,
+          ),
+        ),
+      );
+    } catch (e) {
+      pecasCarregadas = [];
+      avisoInventario.textContent = e.message;
+      seletorPeca.disabled = true;
+    }
+  }
+
+  function adicionarPecaDoInventario() {
+    erro.classList.add('oculto');
+    const peca = pecasCarregadas?.find((p) => String(p.id) === seletorPeca.value);
+    if (!peca) {
+      montar(erro, faixaAviso('Selecione uma peça do inventário.'));
+      erro.classList.remove('oculto');
+      return;
+    }
+    const quantidade = Number(quantidadePeca.value);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      montar(erro, faixaAviso('Informe uma quantidade inteira maior que zero.'));
+      erro.classList.remove('oculto');
+      quantidadePeca.focus();
+      return;
+    }
+    const existente = itensInventario.find((item) => item.pecaId === peca.id);
+    const total = (existente?.quantidade ?? 0) + quantidade;
+    if (peca.controla_estoque && total > peca.quantidade_estoque) {
+      montar(erro, faixaAviso(`Estoque insuficiente para "${peca.nome}": disponível ${peca.quantidade_estoque}.`));
+      erro.classList.remove('oculto');
+      return;
+    }
+    if (existente) existente.quantidade = total;
+    else
+      itensInventario.push({
+        pecaId: peca.id,
+        nome: peca.nome,
+        modelo: peca.modelo,
+        fornecedor: peca.fornecedor_nome,
+        preco: Number(peca.preco_custo ?? 0),
+        quantidade,
+        estoque: peca.controla_estoque ? peca.quantidade_estoque : null,
+      });
+    quantidadePeca.value = '1';
+    renderizarItensDoInventario();
+  }
+
+  function renderizarItensDoInventario() {
+    totalInventario.textContent = moeda(
+      itensInventario.reduce((soma, item) => soma + item.preco * item.quantidade, 0),
+    );
+    if (!itensInventario.length) {
+      montar(listaInventario, h('p.texto-mini.texto-fraco', {}, 'Nenhuma peça adicionada ainda.'));
+      return;
+    }
+    montar(
+      listaInventario,
+      ...itensInventario.map((item) =>
+        h(
+          'div.linha.linha--entre',
+          { style: { gap: '8px', alignItems: 'center' } },
+          h(
+            'span',
+            { style: { minWidth: '0' } },
+            h('span.texto-forte', {}, `${item.quantidade}× ${item.nome}`),
+            h(
+              'div.texto-mini.texto-fraco',
+              {},
+              `${item.modelo ? `${item.modelo} · ` : ''}${item.fornecedor} · ${moeda(item.preco)} cada`,
+            ),
+          ),
+          h(
+            'button.btn.btn--icone',
+            {
+              type: 'button',
+              'aria-label': `Remover ${item.nome}`,
+              onclick: () => {
+                const indice = itensInventario.indexOf(item);
+                if (indice >= 0) itensInventario.splice(indice, 1);
+                renderizarItensDoInventario();
+              },
+            },
+            icone('x', { tamanho: 16 }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  renderizarItensDoInventario();
+
+
   const captura = criarCaptura({
     titulo: 'Foto ou vídeo do aparelho pronto',
     dica: 'Evidência do serviço concluído. Pode gravar um vídeo curto mostrando o aparelho funcionando.',
@@ -69,11 +235,18 @@ export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
           servico.focus();
           return;
         }
+        if (usaInventario && !itensInventario.length) {
+          montar(erro, faixaAviso('Você marcou que usou peças do inventário: adicione ao menos uma peça ou marque "Não".'));
+          erro.classList.remove('oculto');
+          seletorPeca.focus();
+          return;
+        }
         ocupado(botao, true, 'Concluindo…');
         try {
           const resposta = await api.post(`/api/ordens/${ordem.id}/finalizar`, {
             servicoRealizado: servico.value.trim(),
             pecasUtilizadas: pecas.value.trim() || null,
+            pecas: itensInventario.map((item) => ({ pecaId: item.pecaId, quantidade: item.quantidade })),
             valor: valor.value.trim() ? Number(valor.value.replace(/\./g, '').replace(',', '.')) : null,
             garantiaDias: garantia.value ? Number(garantia.value) : null,
             observacoes: observacoes.value.trim() || null,
@@ -100,6 +273,14 @@ export function modalFinalizarOS({ ordem, aoConcluir, garantiaPadrao = 90 }) {
     erro,
     campo('Serviço realizado *', servico, { dica: 'Fica registrado no histórico e no comprovante do cliente.' }),
     campo('Peças utilizadas', pecas, { opcional: true }),
+    h('hr.divisor'),
+    h(
+      'div.pilha--pequena.pilha',
+      {},
+      h('div.rotulo-flutuante', {}, 'Foi usada alguma peça do inventário?'),
+      h('div.linha', { style: { gap: '8px' } }, chipSim, chipNao),
+      blocoInventario,
+    ),
     h(
       'div.formulario__linha.formulario__linha--2',
       {},

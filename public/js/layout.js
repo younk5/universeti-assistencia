@@ -9,6 +9,7 @@ const ITENS = [
   { id: 'nova', rota: '/nova', rotulo: 'Nova OS', icone: 'nova', permissao: 'os.criar' },
   { id: 'fila', rota: '/fila', rotulo: 'Fila', icone: 'ferramenta', permissao: 'os.assumir', contador: 'aguardando' },
   { id: 'ordens', rota: '/ordens', rotulo: 'Ordens', icone: 'lista', permissao: 'os.ver' },
+  { id: 'inventario', rota: '/inventario', rotulo: 'Inventário', icone: 'pacote', permissao: 'inventario.gerir' },
   { id: 'admin', rota: '/admin', rotulo: 'Gestão', icone: 'engrenagem', permissao: 'admin.lojas' },
 ];
 

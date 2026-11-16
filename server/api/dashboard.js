@@ -33,6 +33,7 @@ export function registrar(rota) {
       lojaId: ctx.query.lojaId,
       de: ctx.query.de,
       ate: ctx.query.ate,
+      fornecedorId: ctx.query.fornecedorId ?? null,
     });
 
     const recentes = (

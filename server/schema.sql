@@ -229,3 +229,78 @@ BEGIN
       THEN RAISE(ABORT, 'Uma OS ja retirada nao pode mudar de status.')
   END;
 END;
+-- ============================================================================
+-- Inventário de peças (somente administrador)
+-- Fornecedores -> peças (preço de custo, estoque opcional) -> peças usadas na
+-- conclusão de uma OS. A tabela pecas_usadas guarda uma CÓPIA (snapshot) de
+-- nome, fornecedor, preço e loja: mudar o cadastro depois não reescreve o
+-- histórico nem os relatórios já emitidos.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome          TEXT    NOT NULL,
+  contato       TEXT,
+  observacoes   TEXT,
+  ativo         INTEGER NOT NULL DEFAULT 1,
+  criado_em     TEXT    NOT NULL,
+  atualizado_em TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fornecedores_nome ON fornecedores(nome COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS pecas (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  fornecedor_id      INTEGER NOT NULL REFERENCES fornecedores(id) ON DELETE RESTRICT,
+  nome               TEXT    NOT NULL,
+  modelo             TEXT,
+  preco_custo        REAL    NOT NULL DEFAULT 0,
+  -- NULL = peça sem controle de estoque (só preço/fornecedor).
+  quantidade_estoque INTEGER,
+  ativo              INTEGER NOT NULL DEFAULT 1,
+  criado_em          TEXT    NOT NULL,
+  atualizado_em      TEXT    NOT NULL,
+  CHECK (preco_custo >= 0),
+  CHECK (quantidade_estoque IS NULL OR quantidade_estoque >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor ON pecas(fornecedor_id);
+CREATE INDEX IF NOT EXISTS idx_pecas_nome ON pecas(nome COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS pecas_usadas (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  os_id            INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+  peca_id          INTEGER REFERENCES pecas(id) ON DELETE SET NULL,
+  fornecedor_id    INTEGER NOT NULL REFERENCES fornecedores(id) ON DELETE RESTRICT,
+  loja_id          INTEGER NOT NULL REFERENCES lojas(id) ON DELETE RESTRICT,
+  nome_peca        TEXT    NOT NULL,
+  modelo           TEXT,
+  fornecedor_nome  TEXT    NOT NULL,
+  loja_nome        TEXT    NOT NULL,
+  modelo_aparelho  TEXT,
+  quantidade       INTEGER NOT NULL DEFAULT 1,
+  preco_unitario   REAL    NOT NULL,
+  preco_total      REAL    NOT NULL,
+  os_numero        TEXT,
+  usuario_id       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  usado_em         TEXT    NOT NULL,
+  CHECK (quantidade > 0),
+  CHECK (preco_unitario >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pecas_usadas_os ON pecas_usadas(os_id);
+CREATE INDEX IF NOT EXISTS idx_pecas_usadas_fornecedor ON pecas_usadas(fornecedor_id);
+CREATE INDEX IF NOT EXISTS idx_pecas_usadas_loja ON pecas_usadas(loja_id);
+CREATE INDEX IF NOT EXISTS idx_pecas_usadas_data ON pecas_usadas(usado_em DESC);
+
+-- Histórico de consumo é imutável, como o restante da trilha de auditoria.
+CREATE TRIGGER IF NOT EXISTS trg_pecas_usadas_imutavel_update
+BEFORE UPDATE ON pecas_usadas
+BEGIN
+  SELECT RAISE(ABORT, 'Registro de inventario: pecas_usadas nao pode ser alterado.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_pecas_usadas_imutavel_delete
+BEFORE DELETE ON pecas_usadas
+BEGIN
+  SELECT RAISE(ABORT, 'Registro de inventario: pecas_usadas nao pode ser excluido.');
+END;

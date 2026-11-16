@@ -186,9 +186,11 @@ const PERMISSOES_TOTAIS = [
   'os.retirar', 'os.comentar', 'os.reabrir', 'os.editar', 'admin.lojas', 'admin.usuarios', 'relatorios',
 ];
 
-// Técnico e administrador têm exatamente as mesmas permissões.
+// Técnico e administrador têm as mesmas permissões operacionais. O inventário
+// de peças (cadastro, custos e relatório de gastos) é a exceção: só o
+// administrador — que é o dono do dinheiro — enxerga a aba e as rotas.
 export const PERMISSOES = {
-  admin: PERMISSOES_TOTAIS,
+  admin: [...PERMISSOES_TOTAIS, 'inventario.gerir'],
   tecnico: PERMISSOES_TOTAIS,
   atendente: ['os.criar', 'os.ver', 'os.retirar', 'os.comentar', 'relatorios'],
 };

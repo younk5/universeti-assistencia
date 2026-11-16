@@ -441,6 +441,8 @@ export async function excluirOS(osId, usuario) {
     await executar('DELETE FROM notificacoes WHERE os_id = ?', osId);
     await executar('DELETE FROM fotos_os WHERE os_id = ?', osId);
     await executar('DELETE FROM eventos_os WHERE os_id = ?', osId);
+    // O consumo de peças também é histórico imutável: sai apenas junto da OS.
+    await executar('DELETE FROM pecas_usadas WHERE os_id = ?', osId);
     await executar('DELETE FROM ordens_servico WHERE id = ?', osId);
   } finally {
     await restaurarProtecaoAuditoria();

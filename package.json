@@ -20,6 +20,7 @@
     "test:push": "node --no-warnings server/test/push-crypto.js",
     "test:api": "node --no-warnings server/test/smoke.js",
     "test:ui": "node --no-warnings server/test/navegador.js",
+    "test:inventario": "node --no-warnings server/test/inventario.js",
     "test:turso": "node --no-warnings server/test/turso.js",
     "test": "node --no-warnings server/test/todos.js",
     "vendor:blob": "node server/tools/gerar-vendor-blob.js"

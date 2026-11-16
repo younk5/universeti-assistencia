@@ -35,6 +35,7 @@ import {
   ROTULOS_ORCAMENTO,
 } from '../services/orcamentos.js';
 import { lerNumeroConfig, CHAVES } from '../services/configuracoes.js';
+import { registrarPecasUsadas, listarPecasUsadasDaOS } from '../services/inventario.js';
 import { avisarNovaOS } from '../services/notificacoes.js';
 import { modoArmazenamento, tokenUploadCliente, metadadosRemotos } from '../storage.js';
 import { config } from '../config.js';
@@ -240,6 +241,35 @@ function normalizarEdicaoOS(corpo) {
   return dados;
 }
 
+/**
+ * Peças do inventário informadas na conclusão da OS.
+ * Formato: [{ pecaId, quantidade }]. Vazio/ausente = serviço sem peças do
+ * inventário (o campo livre "peças utilizadas" continua existindo).
+ */
+function exigirPecasDoInventario(valor) {
+  if (valor === undefined || valor === null || valor === '') return [];
+  if (!Array.isArray(valor)) {
+    throw invalido('Lista de peças do inventário em formato inválido.', { campo: 'pecas' });
+  }
+  const vistos = new Set();
+  return valor.map((item, indice) => {
+    const posicao = indice + 1;
+    const pecaId = Number(item?.pecaId ?? item?.id);
+    if (!Number.isInteger(pecaId) || pecaId <= 0) {
+      throw invalido(`Peça ${posicao}: selecione uma peça do inventário.`, { campo: 'pecas' });
+    }
+    if (vistos.has(pecaId)) {
+      throw invalido('A mesma peça foi informada mais de uma vez. Ajuste as quantidades.', { campo: 'pecas' });
+    }
+    const quantidade = Number(item?.quantidade ?? 1);
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      throw invalido(`Peça ${posicao}: a quantidade deve ser um número inteiro maior que zero.`, { campo: 'pecas' });
+    }
+    vistos.add(pecaId);
+    return { pecaId, quantidade };
+  });
+}
+
 export function registrar(rota) {
   /* ----------------------------- Catálogos ------------------------------- */
   rota.get('/api/meta', async (ctx) => {
@@ -349,6 +379,7 @@ export function registrar(rota) {
       eventos,
       fotos,
       orcamento,
+      pecasInventario: await listarPecasUsadasDaOS(os.id),
       linkAprovacao: os.orcamento_token ? urlAprovacao(ctx.req, os.orcamento_token) : null,
       garantiaPadraoDias: await lerNumeroConfig(CHAVES.GARANTIA_DIAS, 90),
       transicoes: transicoesPermitidas(os, ctx.usuario),
@@ -485,6 +516,9 @@ export function registrar(rota) {
     const garantiaDias = exigirNumero(ctx.corpo.garantiaDias, 'garantia (dias)', { min: 0, max: 3650, opcional: true });
     const garantiaEfetiva = garantiaDias ?? (await lerNumeroConfig(CHAVES.GARANTIA_DIAS, 90));
     const observacoes = exigirTexto(ctx.corpo.observacoes, 'observações', { max: 1000, opcional: true });
+    // Peças do inventário (opcional): consumidas neste serviço. A baixa de
+    // estoque e o snapshot de preço acontecem dentro da transação abaixo.
+    const pecasInventario = exigirPecasDoInventario(ctx.corpo.pecas);
 
     if (os.status === STATUS.AGUARDANDO) {
       validarTransicao(os, STATUS.EM_MANUTENCAO);
@@ -522,6 +556,19 @@ export function registrar(rota) {
           WHERE id = ?`,
         [STATUS.PRONTO, agora, valor, ctx.usuario.id, garantiaDias ?? null, agora, os.id],
       );
+
+      const pecasUsadas = await registrarPecasUsadas(conexao, {
+        os: registro,
+        itens: pecasInventario,
+        usuarioId: ctx.usuario.id,
+      });
+      if (pecasUsadas.length) {
+        partes.push(
+          `Peças do inventário: ${pecasUsadas
+            .map((p) => `${p.quantidade}x ${p.nome} (${p.fornecedor}) = R$ ${p.precoTotal.toFixed(2)}`)
+            .join('; ')}`,
+        );
+      }
 
       await registrarEvento(conexao, {
         osId: os.id,

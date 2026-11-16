@@ -1,5 +1,6 @@
 import { consultar, consultarUm } from '../db.js';
 import { STATUS_VALIDOS } from './ordens.js';
+import { gastosPecas } from './inventario.js';
 import { escopoRede } from '../auth.js';
 
 const CORES_STATUS = ['aguardando', 'em_manutencao', 'aguardando_peca', 'pronto', 'retirado', 'cancelado'];
@@ -11,7 +12,7 @@ function periodoPadrao(de, ate) {
   return { de: inicio.toISOString(), ate: fim.toISOString() };
 }
 
-export async function resumoDashboard({ usuario, lojaId = null, de = null, ate = null }) {
+export async function resumoDashboard({ usuario, lojaId = null, de = null, ate = null, fornecedorId = null }) {
   const escopo = escopoRede(usuario) ? (lojaId ? Number(lojaId) : null) : Number(usuario.lojaId);
   const baseWhere = [];
   const baseParams = [];
@@ -154,6 +155,19 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
     ...(escopo ? [escopo] : []),
   );
 
+  // Gastos com peças do inventário: exclusivo do administrador (a aba
+  // Inventário também é). Segue o mesmo período e o mesmo filtro de loja.
+  let pecas = null;
+  if (usuario?.papel === 'admin') {
+    const gastos = await gastosPecas({
+      de: janela.de,
+      ate: janela.ate,
+      lojaId: escopo,
+      fornecedorId: fornecedorId ? Number(fornecedorId) : null,
+    });
+    pecas = { ...gastos, filtros: { de: janela.de, ate: janela.ate, lojaId: escopo, fornecedorId: fornecedorId ? Number(fornecedorId) : null } };
+  }
+
   return {
     geradoEm: new Date().toISOString(),
     periodo: { de: janela.de.slice(0, 10), ate: janela.ate.slice(0, 10) },
@@ -206,5 +220,6 @@ export async function resumoDashboard({ usuario, lojaId = null, de = null, ate =
       })),
     },
     serie: serie.map((p) => ({ ...p, entrada: Number(p.entrada), retiradas: Number(p.retiradas ?? 0) })),
+    pecas,
   };
 }
