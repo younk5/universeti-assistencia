@@ -131,6 +131,7 @@ rede). O atendente fica restrito à própria loja.
 | Painel | própria loja | rede inteira |
 | Exportar CSV | ✅ | ✅ |
 | Gestão: lojas, usuários, regras, auditoria, backup | — | ✅ |
+| Inventário de peças (fornecedores, custos, estoque) | — | ✅ (só administrador) |
 | Trocar a própria senha | — (pede à gestão) | ✅ |
 
 Regras aplicadas **no servidor** (não apenas escondendo botões na interface).
@@ -226,6 +227,14 @@ cliente também é editável por esse caminho auditado.
   aparelho, o defeito e o código de barras Code 128; o comprovante sai em A4 com
   todas as seções, o histórico do atendimento, as fotos e a **assinatura do
   cliente**.
+- **Inventário de peças** (aba exclusiva do administrador): fornecedores com CRUD
+  completo, peças com modelo compatível, preço de custo, fornecedor e estoque
+  opcional. Na conclusão da OS o técnico responde "Foi usada alguma peça do
+  inventário?" e escolhe as peças e quantidades — o preço do momento é congelado no
+  histórico, o estoque baixa sozinho e a peça sem saldo fica bloqueada. O painel
+  ganha o card "Gastos com peças por fornecedor" (com filtro por fornecedor) e o
+  relatório em PDF traz a seção com subtotal por fornecedor, total por loja e total
+  geral.
 - **Assinatura digital** do cliente na retirada (canvas + pointer events, funciona
   com dedo, caneta e mouse), recortada automaticamente no traço.
 - **Aviso por WhatsApp** com mensagem pronta quando o aparelho fica pronto.
@@ -299,6 +308,10 @@ data/                 criado em tempo de execução (banco + fotos) — não ver
 - **sessoes** — tokens de sessão com expiração
 - **notificacoes** — avisos do sino (um por destinatário, com lido/não lido)
 - **push_inscricoes** — aparelhos inscritos no Web Push (endpoint + chaves do navegador)
+- **fornecedores** — nome, contato, observações (peças do inventário)
+- **pecas** — nome, modelo compatível, preço de custo, fornecedor, estoque opcional
+- **pecas_usadas** — **snapshot** por OS: nome, fornecedor, preço no momento do uso,
+  loja, modelo do aparelho, quantidade e data (histórico imutável)
 
 ---
 
@@ -310,6 +323,7 @@ npm run check      # estática do front-end (sintaxe, imports, CSS) — instant�
 npm run test:push  # Web Push: chaves VAPID e criptografia do payload
 npm run test:api   # fluxo completo da OS por HTTP
 npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
+npm run test:inventario  # inventário de peças: API + interface
 ```
 
 - **Verificação estática** — valida a sintaxe de cada módulo ES, garante que todo
@@ -325,6 +339,12 @@ npm run test:ui    # SPA real no Chrome headless (DevTools Protocol)
   lojas, transições de status, **imutabilidade dos registros de auditoria
   (tentativas de `UPDATE`/`DELETE` bloqueadas por trigger)**, ciclo de vida de
   lojas, busca/filtros e exportação CSV.
+- **Teste do inventário** — cria fornecedor e peça pela interface, conclui uma OS
+  escolhendo a peça no modal ("Foi usada alguma peça do inventário?"), confere o
+  snapshot de preço/fornecedor/loja/modelo e a baixa de estoque, valida o card de
+  gastos no painel, **lê os textos desenhados no relatório em PDF** (seção por
+  fornecedor, subtotais, total por loja e total geral) e garante que o técnico não
+  vê a aba nem acessa a API.
 - **Testes de navegador** — sobe o sistema de verdade em um banco temporário,
   controla o Chrome por DevTools Protocol e percorre as telas verificando conteúdo,
   ausência de erros de console e de exceções, formulário de entrada ponta a ponta,

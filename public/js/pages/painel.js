@@ -17,11 +17,14 @@ const ROTULOS_PAGAMENTO = {
   nao_informado: 'Não informado',
 };
 
-let filtros = { ...mesAtual(), lojaId: '' };
+let filtros = { ...mesAtual(), lojaId: '', fornecedorId: '' };
 
 export async function paginaDashboard(container) {
   const escopoRede = store.escopoRede;
   const lojas = store.meta?.lojas ?? [];
+  // Filtro e resumo de peças: o backend só devolve `dados.pecas` para o admin.
+  const podeInventario = store.pode('inventario.gerir');
+  const areaFiltroFornecedor = h('div.oculto');
 
   const campoDe = h('input.entrada', { type: 'date', value: filtros.de, 'aria-label': 'Data inicial' });
   const campoAte = h('input.entrada', { type: 'date', value: filtros.ate, 'aria-label': 'Data final' });
@@ -44,6 +47,7 @@ export async function paginaDashboard(container) {
       h('div.linha', { style: { gap: '8px' } }, campoDe, h('span.texto-fraco', {}, 'até'), campoAte),
     ),
     campoLoja ? h('div.campo', {}, h('label.campo__rotulo', {}, 'Loja'), campoLoja) : null,
+    areaFiltroFornecedor,
     h(
       'div.campo',
       {},
@@ -92,7 +96,12 @@ export async function paginaDashboard(container) {
               const botao = evento.currentTarget;
               ocupado(botao, true, 'Gerando…');
               try {
-                const dados = await api.get('/api/dashboard', { de: filtros.de, ate: filtros.ate, lojaId: filtros.lojaId });
+                const dados = await api.get('/api/dashboard', {
+                  de: filtros.de,
+                  ate: filtros.ate,
+                  lojaId: filtros.lojaId,
+                  fornecedorId: filtros.fornecedorId || undefined,
+                });
                 const nomeLoja = (store.meta?.lojas ?? []).find((l) => String(l.id) === String(filtros.lojaId))?.nome;
                 const escopo = nomeLoja ?? (store.escopoRede ? 'Rede inteira' : store.usuario?.lojaNome ?? '');
                 await baixarRelatorioPainel(dados, { escopo });
@@ -138,6 +147,31 @@ export async function paginaDashboard(container) {
 
   montar(container, pagina);
 
+  if (podeInventario) {
+    try {
+      const resposta = await api.get('/api/inventario/fornecedores');
+      const fornecedores = resposta.fornecedores ?? [];
+      if (fornecedores.length) {
+        const campoFornecedor = h(
+          'select.selecao',
+          {
+            'aria-label': 'Filtrar por fornecedor',
+            onchange: (evento) => {
+              filtros.fornecedorId = evento.currentTarget.value;
+              carregar();
+            },
+          },
+          h('option', { value: '' }, 'Todos os fornecedores'),
+          ...fornecedores.map((fornecedor) => h('option', { value: String(fornecedor.id) }, fornecedor.nome)),
+        );
+        montar(areaFiltroFornecedor, h('div.campo', {}, h('label.campo__rotulo', {}, 'Fornecedor'), campoFornecedor));
+        areaFiltroFornecedor.classList.remove('oculto');
+      }
+    } catch {
+      // Filtro extra: se falhar, o painel continua funcionando sem ele.
+    }
+  }
+
   const aoAplicar = () => {
     filtros.de = campoDe.value;
     filtros.ate = campoAte.value;
@@ -159,6 +193,7 @@ export async function paginaDashboard(container) {
         de: filtros.de,
         ate: filtros.ate,
         lojaId: filtros.lojaId,
+        fornecedorId: filtros.fornecedorId || undefined,
       });
       store.definirResumo(dados);
       renderizar(dados);
@@ -276,6 +311,69 @@ export async function paginaDashboard(container) {
         )
       : null;
 
+    /* ------------------- Gastos com peças por fornecedor ------------------ */
+    const pecasGastos = dados.pecas;
+    const cardPecas = pecasGastos && (pecasGastos.fornecedores?.length || Number(pecasGastos.totalGeral) > 0)
+      ? h(
+          'div.card',
+          {},
+          h(
+            'div.card__cabecalho',
+            {},
+            h('h3', {}, 'Gastos com peças por fornecedor'),
+            h('a.btn.btn--pequeno.btn--fantasma', { href: '#/inventario' }, 'Inventário', icone('chevronDireita', { tamanho: 14 })),
+          ),
+          h(
+            'div.card__corpo.pilha',
+            {},
+            ...pecasGastos.fornecedores.map((grupo) =>
+              h(
+                'div.pilha--pequena',
+                {},
+                h(
+                  'div.linha.linha--entre',
+                  {},
+                  h('strong', {}, grupo.fornecedor),
+                  h('span.texto-forte', {}, moeda(grupo.subtotal)),
+                ),
+                h(
+                  'div.lista-compacta',
+                  {},
+                  ...grupo.itens.map((item) =>
+                    h(
+                      'div.lista-compacta__item',
+                      { style: { cursor: 'default' } },
+                      h(
+                        'div',
+                        { style: { flex: '1', minWidth: '0' } },
+                        h('div.lista-compacta__titulo', {}, item.peca),
+                        h('div.texto-mini.texto-fraco', {}, `${item.modelo || item.aparelho || '—'} · ${item.loja}`),
+                      ),
+                      h('span.texto-pequeno', {}, moeda(item.preco)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            h('hr.divisor'),
+            ...(pecasGastos.porLoja ?? []).map((loja) =>
+              h(
+                'div.linha.linha--entre',
+                {},
+                h('span.texto-suave', {}, `Loja ${loja.loja}`),
+                h('span', {}, moeda(loja.total)),
+              ),
+            ),
+            h(
+              'div.linha.linha--entre',
+              {},
+              h('strong', {}, 'Total geral gasto com peças'),
+              h('strong', {}, moeda(pecasGastos.totalGeral)),
+            ),
+          ),
+        )
+      : null;
+
     const produtividade = (dados.produtividade ?? []).map((tecnico) =>
       h(
         'div.lista-compacta__item',
@@ -331,6 +429,7 @@ export async function paginaDashboard(container) {
       indicadores,
       h('div', {}, h('div.rotulo-flutuante', { style: { marginBottom: '10px' } }, 'Resumo do período'), resumoPeriodo),
       painelFinanceiro,
+      cardPecas,
       h(
         'div.grade--lateral.grade',
         {},

@@ -49,6 +49,7 @@ const etapas = [
 
 if (localizarChrome()) {
   etapas.push({ nome: 'Interface real no navegador (Chrome headless)', arquivo: path.join('server', 'test', 'navegador.js') });
+  etapas.push({ nome: 'Inventário de peças (API + interface)', arquivo: path.join('server', 'test', 'inventario.js') });
 } else {
   console.log('\n  [aviso] Chrome/Edge não encontrado — o teste de navegador foi ignorado.');
   console.log('          Defina CHROME_PATH para incluí-lo.\n');

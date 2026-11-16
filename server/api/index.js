@@ -3,6 +3,7 @@ import { registrar as registrarAuth } from './auth.js';
 import { registrar as registrarOrdens } from './ordens.js';
 import { registrar as registrarDashboard } from './dashboard.js';
 import { registrar as registrarAdmin } from './admin.js';
+import { registrar as registrarInventario } from './inventario.js';
 import { registrar as registrarPublico } from './publico.js';
 import { registrar as registrarNotificacoes } from './notificacoes.js';
 import { registrar as registrarCron } from './cron.js';
@@ -26,6 +27,7 @@ export function montarApi() {
   registrarOrdens(rota);
   registrarDashboard(rota);
   registrarAdmin(rota);
+  registrarInventario(rota);
   registrarPublico(rota);
   registrarNotificacoes(rota);
   registrarCron(rota);

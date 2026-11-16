@@ -103,11 +103,19 @@ const TRIGGERS_AUDITORIA = [
    BEGIN
      SELECT RAISE(ABORT, 'Registro de auditoria: fotos_os nao pode ser excluido.');
    END`,
+  // Consumo de peças do inventário: também é histórico — só a exclusão
+  // administrativa da OS (abaixo) o remove.
+  `CREATE TRIGGER IF NOT EXISTS trg_pecas_usadas_imutavel_delete
+   BEFORE DELETE ON pecas_usadas
+   BEGIN
+     SELECT RAISE(ABORT, 'Registro de inventario: pecas_usadas nao pode ser excluido.');
+   END`,
 ];
 
 export async function suspenderProtecaoAuditoria() {
   await executar('DROP TRIGGER IF EXISTS trg_eventos_imutavel_delete');
   await executar('DROP TRIGGER IF EXISTS trg_fotos_imutavel_delete');
+  await executar('DROP TRIGGER IF EXISTS trg_pecas_usadas_imutavel_delete');
 }
 
 export async function restaurarProtecaoAuditoria() {

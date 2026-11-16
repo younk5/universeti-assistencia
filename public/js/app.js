@@ -15,6 +15,7 @@ import { paginaFila } from './pages/fila.js';
 import { paginaOrdens } from './pages/ordens.js';
 import { paginaOSDetalhe } from './pages/os-detalhe.js';
 import { paginaAdmin } from './pages/admin.js';
+import { paginaInventario } from './pages/inventario.js';
 import { abrirPerfil } from './pages/perfil.js';
 
 const ROTAS = [
@@ -28,6 +29,7 @@ const ROTAS = [
   { padrao: '/ordens', montar: (c) => paginaOrdens(c), permissao: 'os.ver' },
   { padrao: '/ordens/:id/finalizar', montar: (c, p) => paginaOSDetalhe(c, { ...p, acao: 'finalizar' }), permissao: 'os.ver' },
   { padrao: '/ordens/:id', montar: (c, p) => paginaOSDetalhe(c, p), permissao: 'os.ver' },
+  { padrao: '/inventario', montar: (c) => paginaInventario(c), permissao: 'inventario.gerir' },
   { padrao: '/admin', montar: (c) => paginaAdmin(c), permissao: 'admin.lojas' },
   { padrao: '/perfil', montar: null, permissao: null },
 ];
@@ -147,6 +149,7 @@ function titulo(caminho) {
     '/nova': 'Nova OS',
     '/fila': 'Fila de atendimento',
     '/ordens': 'Ordens de serviço',
+    '/inventario': 'Inventário',
     '/admin': 'Gestão',
   };
   return nomes[caminho] ?? 'UniverseTI Assistência';

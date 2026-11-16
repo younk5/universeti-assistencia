@@ -365,6 +365,44 @@ export function paginaOSDetalhe(container, params) {
               : null,
         ),
       ),
+      (dados.pecasInventario ?? []).length
+        ? h(
+            'div.card',
+            {},
+            h(
+              'div.card__cabecalho',
+              {},
+              h('h3', {}, 'Peças do inventário'),
+              h(
+                'span.texto-mini.texto-suave',
+                {},
+                moeda((dados.pecasInventario ?? []).reduce((soma, item) => soma + item.preco_total, 0)),
+              ),
+            ),
+            h(
+              'div.card__corpo.pilha--pequena',
+              {},
+              ...(dados.pecasInventario ?? []).map((item) =>
+                h(
+                  'div.linha.linha--entre',
+                  { style: { gap: '10px', alignItems: 'flex-start' } },
+                  h(
+                    'div',
+                    { style: { minWidth: '0' } },
+                    h('div.texto-forte', {}, `${item.quantidade}× ${item.nome_peca}`),
+                    h(
+                      'div.texto-mini.texto-fraco',
+                      {},
+                      `${item.fornecedor_nome} · ${item.loja_nome}${item.modelo ? ` · ${item.modelo}` : ''}`,
+                    ),
+                  ),
+                  h('span.texto-pequeno', {}, moeda(item.preco_total)),
+                ),
+              ),
+              h('p.texto-mini.texto-fraco', {}, 'Preço congelado no momento da conclusão — reajustes no inventário não alteram esta OS.'),
+            ),
+          )
+        : null,
       cartaoOrcamento(os, dados, carregar),
       cartaoChecklist(os),
       h(
